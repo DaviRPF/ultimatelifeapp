@@ -33,7 +33,6 @@ const CreateQuestScreen: React.FC = () => {
   // Skills and Characteristics
   const [availableSkills, setAvailableSkills] = useState<string[]>([]);
   const [availableCharacteristics, setAvailableCharacteristics] = useState<string[]>([]);
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [selectedCharacteristics, setSelectedCharacteristics] = useState<string[]>([]);
 
   useEffect(() => {
@@ -93,7 +92,6 @@ const CreateQuestScreen: React.FC = () => {
         createdAt: new Date().toISOString(),
         dueDate: hasDueDate && dueDate ? dueDate.toISOString() : undefined,
         notes: [],
-        skills: selectedSkills,
         characteristics: selectedCharacteristics,
       };
 

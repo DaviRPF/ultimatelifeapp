@@ -32,12 +32,8 @@ const CreateTaskScreen: React.FC<Props> = ({ navigation }) => {
   const [difficulty, setDifficulty] = useState(50);
   const [importance, setImportance] = useState(50);
   const [fear, setFear] = useState(50);
-  const [skills, setSkills] = useState<string[]>([]);
-  const [skillInput, setSkillInput] = useState('');
   const [characteristics, setCharacteristics] = useState<string[]>([]);
   const [characteristicInput, setCharacteristicInput] = useState('');
-  const [increasingSkills, setIncreasingSkills] = useState<string[]>([]);
-  const [decreasingSkills, setDecreasingSkills] = useState<string[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>('');
   const [groups, setGroups] = useState<Group[]>([]);
   
@@ -60,10 +56,8 @@ const CreateTaskScreen: React.FC<Props> = ({ navigation }) => {
   
   const [isLoading, setIsLoading] = useState(false);
   
-  // Existing skills and characteristics
-  const [availableSkills, setAvailableSkills] = useState<string[]>([]);
+  // Existing characteristics
   const [availableCharacteristics, setAvailableCharacteristics] = useState<string[]>([]);
-  const [showExistingSkills, setShowExistingSkills] = useState(false);
   const [showExistingCharacteristics, setShowExistingCharacteristics] = useState(false);
   const [showGroupModal, setShowGroupModal] = useState(false);
 
@@ -87,29 +81,14 @@ const CreateTaskScreen: React.FC<Props> = ({ navigation }) => {
   const loadExistingData = async () => {
     try {
       await storageService.initializeAppData();
-      const skills = storageService.getSkills();
       const characteristics = storageService.getCharacteristics();
       
-      setAvailableSkills(Object.keys(skills));
       setAvailableCharacteristics(Object.keys(characteristics));
     } catch (error) {
       console.error('Error loading existing data:', error);
     }
   };
 
-  const addSkill = () => {
-    if (skillInput.trim() && !skills.includes(skillInput.trim())) {
-      const newSkill = skillInput.trim();
-      setSkills([...skills, newSkill]);
-      setSkillInput('');
-    }
-  };
-
-  const removeSkill = (skillToRemove: string) => {
-    setSkills(skills.filter(skill => skill !== skillToRemove));
-    setIncreasingSkills(increasingSkills.filter(skill => skill !== skillToRemove));
-    setDecreasingSkills(decreasingSkills.filter(skill => skill !== skillToRemove));
-  };
 
   const addCharacteristic = () => {
     if (characteristicInput.trim() && !characteristics.includes(characteristicInput.trim())) {
@@ -122,13 +101,6 @@ const CreateTaskScreen: React.FC<Props> = ({ navigation }) => {
     setCharacteristics(characteristics.filter(char => char !== charToRemove));
   };
 
-  const toggleExistingSkill = (skillName: string) => {
-    if (skills.includes(skillName)) {
-      setSkills(skills.filter(skill => skill !== skillName));
-    } else {
-      setSkills([...skills, skillName]);
-    }
-  };
 
   const toggleExistingCharacteristic = (charName: string) => {
     if (characteristics.includes(charName)) {
@@ -138,31 +110,11 @@ const CreateTaskScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  const getAvailableSkillsFiltered = () => {
-    return availableSkills.filter(skillName => !skills.includes(skillName));
-  };
 
   const getAvailableCharacteristicsFiltered = () => {
     return availableCharacteristics.filter(charName => !characteristics.includes(charName));
   };
 
-  const toggleSkillType = (skill: string, type: 'increasing' | 'decreasing') => {
-    if (type === 'increasing') {
-      if (increasingSkills.includes(skill)) {
-        setIncreasingSkills(increasingSkills.filter(s => s !== skill));
-      } else {
-        setIncreasingSkills([...increasingSkills, skill]);
-        setDecreasingSkills(decreasingSkills.filter(s => s !== skill));
-      }
-    } else {
-      if (decreasingSkills.includes(skill)) {
-        setDecreasingSkills(decreasingSkills.filter(s => s !== skill));
-      } else {
-        setDecreasingSkills([...decreasingSkills, skill]);
-        setIncreasingSkills(increasingSkills.filter(s => s !== skill));
-      }
-    }
-  };
 
   const validateForm = (): boolean => {
     if (!title.trim()) {
@@ -170,10 +122,6 @@ const CreateTaskScreen: React.FC<Props> = ({ navigation }) => {
       return false;
     }
 
-    if (skills.length === 0) {
-      Alert.alert('Error', 'At least one skill is required');
-      return false;
-    }
 
     if (characteristics.length === 0) {
       Alert.alert('Error', 'At least one characteristic is required');
@@ -199,10 +147,7 @@ const CreateTaskScreen: React.FC<Props> = ({ navigation }) => {
         difficulty,
         importance,
         fear,
-        skills,
         characteristics,
-        increasingSkills,
-        decreasingSkills,
         dueDate: hasDueDate ? dueDate.toISOString().split('T')[0] : '',
         dueTime: hasDueDate ? dueDate.toTimeString().split(' ')[0] : '',
         repetition,
@@ -301,92 +246,6 @@ const CreateTaskScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Skills */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Skills *</Text>
-          <TouchableOpacity
-            style={styles.toggleButton}
-            onPress={() => setShowExistingSkills(!showExistingSkills)}
-          >
-            <Text style={styles.toggleButtonText}>
-              {showExistingSkills ? 'Create New' : 'Use Existing'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {showExistingSkills ? (
-          <View style={styles.existingSection}>
-            <Text style={styles.sectionSubtitle}>Select from existing skills:</Text>
-            {getAvailableSkillsFiltered().length === 0 ? (
-              <Text style={styles.noItemsText}>
-                {availableSkills.length === 0 
-                  ? 'No skills available. Create skills first in the Skills tab.' 
-                  : 'All available skills already selected.'}
-              </Text>
-            ) : (
-              <View style={styles.existingItemsGrid}>
-                {getAvailableSkillsFiltered().map((skillName) => (
-                  <TouchableOpacity
-                    key={skillName}
-                    style={styles.existingItem}
-                    onPress={() => toggleExistingSkill(skillName)}
-                  >
-                    <Text style={styles.existingItemText}>{skillName}</Text>
-                    <Ionicons name="add-circle" size={16} color={Colors.primary} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </View>
-        ) : (
-          <View style={styles.inputRow}>
-            <TextInput
-              style={[styles.input, styles.skillInput]}
-              placeholder="Add skill"
-              placeholderTextColor={Colors.textSecondary}
-              value={skillInput}
-              onChangeText={setSkillInput}
-              onSubmitEditing={addSkill}
-            />
-            <TouchableOpacity style={styles.addButton} onPress={addSkill}>
-              <Text style={styles.addButtonText}>+</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {skills.map((skill, index) => (
-          <View key={index} style={styles.skillItem}>
-            <Text style={styles.skillText}>{skill}</Text>
-            <View style={styles.skillControls}>
-              <TouchableOpacity
-                style={[
-                  styles.skillTypeButton,
-                  increasingSkills.includes(skill) && styles.skillTypeButtonActive
-                ]}
-                onPress={() => toggleSkillType(skill, 'increasing')}
-              >
-                <Text style={styles.skillTypeText}>↑</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.skillTypeButton,
-                  decreasingSkills.includes(skill) && styles.skillTypeButtonActive
-                ]}
-                onPress={() => toggleSkillType(skill, 'decreasing')}
-              >
-                <Text style={styles.skillTypeText}>↓</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.removeButton}
-                onPress={() => removeSkill(skill)}
-              >
-                <Text style={styles.removeButtonText}>×</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
-      </View>
 
       {/* Characteristics */}
       <View style={styles.section}>

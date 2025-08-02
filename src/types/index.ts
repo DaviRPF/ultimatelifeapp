@@ -5,12 +5,33 @@ export interface Hero {
   gold: number;
   xpMultiplier: number; // from unlocked achievements
   createdAt: string;
+  name: string;
+  weight?: number; // Current weight in kg
+}
+
+export interface WeightEntry {
+  id: string;
+  weight: number; // in kg
+  date: string; // ISO date
+  notes?: string;
 }
 
 export interface CustomRepetition {
   interval: number;
   unit: 'days' | 'weeks' | 'months';
 }
+
+export interface WeeklyRepetition {
+  daysOfWeek: number[]; // 0=Sunday, 1=Monday, 2=Tuesday, etc.
+}
+
+export type RepetitionType = 
+  | 'one_time' 
+  | 'daily' 
+  | 'weekdays' // Monday to Friday
+  | 'weekends' // Saturday and Sunday
+  | 'weekly' // Custom days of week
+  | 'custom'; // Custom interval
 
 export interface HabitData {
   enabled: boolean; // Generate Habit active
@@ -27,14 +48,12 @@ export interface Task {
   importance: number; // 10-100, never 0  
   fear: number; // 10-100, never 0
   xp: number; // calculated by proprietary algorithm
-  skills: string[]; // multiple skills
-  characteristics: string[]; // associated characteristics
-  increasingSkills: string[]; // skills that go up when completed
-  decreasingSkills: string[]; // skills that go down when completed
+  characteristics: string[]; // characteristics that will gain XP
   dueDate?: string; // optional
   dueTime?: string; // specific time optional
-  repetition: 'one_time' | 'continuous' | 'custom';
+  repetition: RepetitionType;
   customRepetition?: CustomRepetition;
+  weeklyRepetition?: WeeklyRepetition;
   group: string; // for thematic organization
   completed: boolean;
   failed: boolean;
@@ -63,7 +82,6 @@ export interface Quest {
   completedAt?: string;
   dueDate?: string;
   notes: string[];
-  skills: string[]; // Associated skills
   characteristics: string[]; // Associated characteristics
 }
 
@@ -96,6 +114,11 @@ export interface Reward {
   purchased: boolean;
   timePurchased?: string;
   createdAt: string;
+  // Stock system
+  hasInfiniteStock: boolean; // true = infinite stock, false = finite stock
+  totalStock?: number; // only used when hasInfiniteStock is false
+  currentStock?: number; // only used when hasInfiniteStock is false
+  timesPurchased: number; // how many times this reward has been purchased
 }
 
 export interface DefaultAchievementCondition {
@@ -145,6 +168,7 @@ export interface AppData {
   groups: Group[];
   rewards: Reward[];
   achievements: Achievements;
+  weightEntries: WeightEntry[];
 }
 
 // Attribute descriptions for sliders
@@ -171,7 +195,7 @@ export type MainTabParamList = {
   Skills: undefined;
   Rewards: undefined;
   Achievements: undefined;
-  Groups: undefined;
+  Fitness: undefined;
   Settings: undefined;
 };
 

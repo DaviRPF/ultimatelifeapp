@@ -94,16 +94,16 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onComplete, onFail, onPress }
         </Text>
       )}
 
-      {/* Skills */}
-      {task.skills.length > 0 && (
+      {/* Characteristics */}
+      {task.characteristics.length > 0 && (
         <View style={styles.skillsContainer}>
-          {task.skills.slice(0, 3).map((skill, index) => (
+          {task.characteristics.slice(0, 3).map((char, index) => (
             <View key={index} style={styles.skillTag}>
-              <Text style={styles.skillText}>{skill}</Text>
+              <Text style={styles.skillText}>{char}</Text>
             </View>
           ))}
-          {task.skills.length > 3 && (
-            <Text style={styles.moreSkills}>+{task.skills.length - 3} more</Text>
+          {task.characteristics.length > 3 && (
+            <Text style={styles.moreSkills}>+{task.characteristics.length - 3} more</Text>
           )}
         </View>
       )}

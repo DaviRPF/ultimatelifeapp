@@ -9,18 +9,19 @@ import {
   Alert,
   Modal,
   Animated,
-  Dimensions
+  Dimensions,
+  ScrollView
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
-import { Task, RootStackParamList } from '../../types';
+import { Task, RootStackParamList, RepetitionType } from '../../types';
 import StorageService from '../../services/StorageService';
 import GameEngine from '../../services/GameEngine';
 import TaskCard from '../../components/TaskCard';
 import { Colors, FontSizes, Spacing } from '../../constants/theme';
 
-type TaskStatus = 'all' | 'active' | 'completed' | 'failed';
+type TaskStatus = 'all' | 'today' | 'active' | 'completed' | 'failed';
 
 interface AchievementNotification {
   id: string;
@@ -29,6 +30,58 @@ interface AchievementNotification {
 }
 
 type TasksScreenNavigationProp = StackNavigationProp<RootStackParamList>;
+
+// Helper function to check if a task should be done today
+const isTaskForToday = (task: Task): boolean => {
+  if (task.completed || task.failed) return false;
+
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0=Sunday, 1=Monday, etc.
+
+  switch (task.repetition) {
+    case 'one_time':
+      // Check if due date is today or overdue
+      if (task.dueDate) {
+        const dueDate = new Date(task.dueDate);
+        return dueDate <= today;
+      }
+      return false;
+
+    case 'daily':
+      return true;
+
+    case 'weekdays':
+      // Monday to Friday (1-5)
+      return dayOfWeek >= 1 && dayOfWeek <= 5;
+
+    case 'weekends':
+      // Saturday and Sunday (0, 6)
+      return dayOfWeek === 0 || dayOfWeek === 6;
+
+    case 'weekly':
+      // Check if today is in the selected days
+      if (task.weeklyRepetition?.daysOfWeek) {
+        return task.weeklyRepetition.daysOfWeek.includes(dayOfWeek);
+      }
+      return false;
+
+    case 'custom':
+      // For custom repetition, check if it's time based on interval
+      if (task.customRepetition) {
+        const createdDate = new Date(task.createdAt);
+        const daysSinceCreated = Math.floor((today.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+        
+        if (task.customRepetition.unit === 'days') {
+          return daysSinceCreated % task.customRepetition.interval === 0;
+        }
+        // Add more logic for weeks/months if needed
+      }
+      return false;
+
+    default:
+      return false;
+  }
+};
 
 const TasksScreen = () => {
   const navigation = useNavigation<TasksScreenNavigationProp>();
@@ -63,6 +116,9 @@ const TasksScreen = () => {
     let filtered = tasks;
     
     switch (filter) {
+      case 'today':
+        filtered = tasks.filter(task => isTaskForToday(task));
+        break;
       case 'active':
         filtered = tasks.filter(task => !task.completed && !task.failed);
         break;
@@ -232,6 +288,8 @@ const TasksScreen = () => {
   // Get task count for each filter
   const getTaskCount = (filterType: TaskStatus) => {
     switch (filterType) {
+      case 'today':
+        return tasks.filter(task => isTaskForToday(task)).length;
       case 'active':
         return tasks.filter(task => !task.completed && !task.failed).length;
       case 'completed':
@@ -249,12 +307,14 @@ const TasksScreen = () => {
       <Ionicons name="clipboard-outline" size={64} color={Colors.textSecondary} />
       <Text style={styles.emptyTitle}>
         {filter === 'all' && 'No tasks yet'}
+        {filter === 'today' && 'No tasks for today'}
         {filter === 'active' && 'No active tasks'}
         {filter === 'completed' && 'No completed tasks'}
         {filter === 'failed' && 'No failed tasks'}
       </Text>
       <Text style={styles.emptySubtitle}>
         {filter === 'all' && 'Create your first quest to start your journey!'}
+        {filter === 'today' && 'Great! You have no tasks scheduled for today. Take a break or create some new quests!'}
         {filter === 'active' && 'All tasks are either completed or failed'}
         {filter === 'completed' && 'Complete some tasks to see them here'}
         {filter === 'failed' && 'Failed tasks will appear here'}
@@ -304,13 +364,27 @@ const TasksScreen = () => {
       </View>
 
       {/* Filter Tabs */}
-      <View style={styles.filterContainer}>
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterContainer}
+        contentContainerStyle={styles.filterContent}
+      >
         <TouchableOpacity
           style={getFilterButtonStyle('all')}
           onPress={() => setFilter('all')}
         >
           <Text style={getFilterTextStyle('all')}>
             All ({getTaskCount('all')})
+          </Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={getFilterButtonStyle('today')}
+          onPress={() => setFilter('today')}
+        >
+          <Text style={getFilterTextStyle('today')}>
+            Today ({getTaskCount('today')})
           </Text>
         </TouchableOpacity>
         
@@ -340,7 +414,7 @@ const TasksScreen = () => {
             Failed ({getTaskCount('failed')})
           </Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
 
       {/* Task List */}
       <FlatList
@@ -411,19 +485,23 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   filterContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.md,
     paddingBottom: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
+  filterContent: {
+    flexDirection: 'row',
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.xs,
+  },
   filterButton: {
-    flex: 1,
+    minWidth: 80,
     paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.xs,
+    paddingHorizontal: Spacing.md,
     borderRadius: 8,
     backgroundColor: Colors.surface,
-    marginHorizontal: 2,
+    borderWidth: 1,
+    borderColor: Colors.border,
     alignItems: 'center',
   },
   filterButtonActive: {

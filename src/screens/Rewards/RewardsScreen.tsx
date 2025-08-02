@@ -84,6 +84,8 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
   const renderRewardCard = (reward: Reward) => {
     const canAfford = hero && hero.gold >= reward.cost;
     const isPurchased = reward.purchased;
+    const isOutOfStock = !reward.hasInfiniteStock && (reward.currentStock ?? 0) <= 0;
+    const canPurchase = canAfford && !isPurchased && !isOutOfStock;
 
     return (
       <View key={reward.id} style={styles.rewardCard}>
@@ -101,7 +103,27 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
           <Text style={styles.rewardDescription}>{reward.description}</Text>
         )}
 
-        {isPurchased ? (
+        {/* Stock Information */}
+        <View style={styles.stockInfo}>
+          {reward.hasInfiniteStock ? (
+            <Text style={styles.stockText}>♾️ Infinite Stock</Text>
+          ) : (
+            <Text style={[
+              styles.stockText,
+              isOutOfStock && styles.outOfStockText
+            ]}>
+              📦 {reward.currentStock ?? 0} / {reward.totalStock ?? 0} in stock
+            </Text>
+          )}
+          
+          {reward.timesPurchased > 0 && (
+            <Text style={styles.purchaseCountText}>
+              Purchased {reward.timesPurchased} time{reward.timesPurchased !== 1 ? 's' : ''}
+            </Text>
+          )}
+        </View>
+
+        {isPurchased && reward.totalStock === 1 ? (
           <View style={styles.purchasedContainer}>
             <Text style={styles.purchasedText}>✅ Purchased</Text>
             {reward.timePurchased && (
@@ -114,16 +136,16 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
           <TouchableOpacity
             style={[
               styles.purchaseButton,
-              !canAfford && styles.purchaseButtonDisabled
+              !canPurchase && styles.purchaseButtonDisabled
             ]}
             onPress={() => handlePurchaseReward(reward.id)}
-            disabled={!canAfford}
+            disabled={!canPurchase}
           >
             <Text style={[
               styles.purchaseButtonText,
-              !canAfford && styles.purchaseButtonTextDisabled
+              !canPurchase && styles.purchaseButtonTextDisabled
             ]}>
-              {canAfford ? 'Purchase' : 'Not enough gold'}
+              {isOutOfStock ? 'Out of Stock' : !canAfford ? 'Not enough gold' : 'Purchase'}
             </Text>
           </TouchableOpacity>
         )}
@@ -131,8 +153,19 @@ const RewardsScreen: React.FC<Props> = ({ navigation }) => {
     );
   };
 
-  const availableRewards = appData?.rewards.filter(r => !r.purchased) || [];
-  const purchasedRewards = appData?.rewards.filter(r => r.purchased) || [];
+  const availableRewards = appData?.rewards.filter(r => {
+    // Single-purchase rewards that are not purchased yet
+    if (!r.hasInfiniteStock && r.totalStock === 1) {
+      return !r.purchased;
+    }
+    // Multi-purchase or infinite stock rewards that still have stock
+    return r.hasInfiniteStock || (r.currentStock ?? 0) > 0;
+  }) || [];
+  
+  const purchasedRewards = appData?.rewards.filter(r => {
+    // Only show single-purchase rewards that have been purchased
+    return r.purchased && !r.hasInfiniteStock && r.totalStock === 1;
+  }) || [];
 
   return (
     <View style={styles.container}>
@@ -352,6 +385,30 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  // Stock styles
+  stockInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  stockText: {
+    fontSize: FontSizes.sm,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+  outOfStockText: {
+    color: Colors.danger,
+    fontWeight: 'bold',
+  },
+  purchaseCountText: {
+    fontSize: FontSizes.xs,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
   },
 });
 

@@ -1,4 +1,4 @@
-import { Task, Hero, Skill, Characteristic, DefaultAchievement, CustomAchievement, Reward } from '../types';
+import { Task, Hero, Skill, Characteristic, DefaultAchievement, CustomAchievement, Reward, Quest } from '../types';
 import StorageService from './StorageService';
 import XPCalculator from './XPCalculator';
 
@@ -68,8 +68,8 @@ class GameEngine {
       completedAt: new Date().toISOString()
     });
 
-    // Update skills
-    await this.updateSkillsFromTask(task, true, xpGained);
+    // Update characteristics and associated skills
+    await this.updateCharacteristicsFromTask(task, true, xpGained);
 
     // Update habit streak if applicable
     if (task.habit.enabled) {
@@ -103,8 +103,8 @@ class GameEngine {
       failed: true
     });
 
-    // Update skills (negative impact)
-    const skillsAffected = await this.updateSkillsFromTask(task, false, 0);
+    // Update characteristics and skills (negative impact)
+    const skillsAffected = await this.updateCharacteristicsFromTask(task, false, 0);
 
     // Reset habit streak if applicable
     let habitReset = false;
@@ -119,41 +119,95 @@ class GameEngine {
     };
   }
 
-  // Update skills based on task completion/failure
-  private async updateSkillsFromTask(task: Task, completed: boolean, taskXP: number): Promise<string[]> {
-    const affectedSkills: string[] = [];
-    const allSkills = [...(task.increasingSkills || []), ...(task.decreasingSkills || [])];
-    
-    console.log('updateSkillsFromTask called with:', {
-      taskTitle: task.title,
-      completed,
-      taskXP,
-      increasingSkills: task.increasingSkills,
-      decreasingSkills: task.decreasingSkills,
-      characteristics: task.characteristics,
-      allSkills
+  // Complete a quest and update all game state
+  async completeQuest(questId: string): Promise<{
+    xpGained: number;
+    goldGained: number;
+    levelUp: boolean;
+    newLevel?: number;
+    achievementsUnlocked: string[];
+    skillsAffected: string[];
+  }> {
+    const quest = this.storageService.getQuestById(questId);
+    if (!quest || quest.status === 'completed') {
+      throw new Error('Quest not found or already completed');
+    }
+
+    const hero = this.storageService.getHero();
+    if (!hero) {
+      throw new Error('Hero data not found');
+    }
+
+    // Get quest rewards
+    const xpGained = quest.rewards.xp;
+    const goldGained = quest.rewards.gold;
+
+    // Check for level up
+    const oldLevel = hero.level;
+    const newTotalXP = hero.xp + xpGained;
+    const newLevel = this.xpCalculator.calculateLevelFromXP(newTotalXP);
+    const levelUp = newLevel > oldLevel;
+
+    // Update hero stats
+    const newGold = hero.gold + goldGained;
+    await this.storageService.updateHero({
+      xp: newTotalXP,
+      level: newLevel,
+      gold: newGold
     });
 
-    for (const skillName of allSkills) {
+    // Update quest status
+    await this.storageService.updateQuest(questId, {
+      status: 'completed',
+      completedAt: new Date().toISOString(),
+      progress: 100
+    });
+
+    // Update skills associated with quest
+    const skillsAffected = await this.updateSkillsFromQuest(quest, xpGained);
+
+    // Check and unlock achievements
+    const achievementsUnlocked = await this.checkAndUnlockAchievements();
+
+    return {
+      xpGained,
+      goldGained,
+      levelUp,
+      newLevel: levelUp ? newLevel : undefined,
+      achievementsUnlocked,
+      skillsAffected
+    };
+  }
+
+  // Update characteristics based on quest completion (changed from skills)
+  private async updateSkillsFromQuest(quest: Quest, questXP: number): Promise<string[]> {
+    // Now quests affect characteristics instead of skills directly
+    return this.updateCharacteristicsFromQuest(quest, questXP);
+  }
+  
+  // Update characteristics from quest
+  private async updateCharacteristicsFromQuest(quest: Quest, questXP: number): Promise<string[]> {
+    const affectedCharacteristics: string[] = [];
+    
+    for (const charName of quest.characteristics) {
       let skill = this.storageService.getSkill(skillName);
       
       // Create skill if it doesn't exist
       if (!skill) {
-        const skillType = (task.increasingSkills || []).includes(skillName) ? 'increasing' : 'decreasing';
         skill = {
           level: 1,
           xp: 0,
-          type: skillType,
-          characteristics: (task.characteristics || []).filter(char => 
-            // Associate characteristics that are also in the task
-            (task.characteristics || []).includes(char)
-          )
+          type: 'increasing', // Default for quests
+          characteristics: quest.characteristics || []
         };
+        
+        // Save the new skill immediately
+        await this.storageService.updateSkill(skillName, skill);
       }
 
-      // Calculate skill XP change
-      const skillXPChange = this.xpCalculator.calculateSkillXP(taskXP, skill.type, completed);
-      const newSkillXP = Math.max(0, skill.xp + skillXPChange);
+      // Calculate skill XP change (30% of quest XP)
+      const skillXPChange = Math.round(questXP * 0.3);
+      const newSkillXP = skill.xp + skillXPChange;
       const newSkillLevel = this.xpCalculator.calculateSkillLevel(newSkillXP);
 
       // Update skill
@@ -166,36 +220,120 @@ class GameEngine {
       affectedSkills.push(skillName);
     }
 
-    // Update characteristics based on skills
-    await this.updateCharacteristicsFromSkills(task.characteristics);
+    // Update characteristics based on quest skills
+    await this.updateCharacteristicsFromSkills(quest.characteristics || []);
+
+    return affectedSkills;
+  }
+
+  // Update characteristics and their associated skills based on task completion/failure
+  private async updateCharacteristicsFromTask(task: Task, completed: boolean, taskXP: number): Promise<string[]> {
+    const affectedSkills: string[] = [];
+    
+    console.log('🔍 DEBUG - updateCharacteristicsFromTask:', {
+      taskTitle: task.title,
+      taskXP,
+      characteristics: task.characteristics,
+      completed
+    });
+
+    // First, update each characteristic directly
+    for (const charName of task.characteristics) {
+      console.log(`🔍 Processing characteristic: ${charName}`);
+      
+      let characteristic = this.storageService.getCharacteristic(charName);
+      
+      // Create characteristic if it doesn't exist
+      if (!characteristic) {
+        characteristic = {
+          level: 1,
+          xp: 0,
+          associatedSkills: []
+        };
+        console.log(`🔍 Creating new characteristic: ${charName}`);
+      }
+
+      // Calculate characteristic XP change (30% of task XP)
+      const charXPChange = Math.round(taskXP * 0.3);
+      const newCharXP = Math.max(0, characteristic.xp + charXPChange);
+      const newCharLevel = this.xpCalculator.calculateSkillLevel(newCharXP);
+
+      console.log(`🔍 Characteristic ${charName}: XP ${characteristic.xp} -> ${newCharXP} (change: ${charXPChange}), Level ${characteristic.level} -> ${newCharLevel}`);
+
+      // Update characteristic
+      const updatedCharacteristic: Characteristic = {
+        ...characteristic,
+        xp: newCharXP,
+        level: newCharLevel
+      };
+
+      await this.storageService.updateCharacteristic(charName, updatedCharacteristic);
+
+      // Now update all skills associated with this characteristic
+      const allSkills = this.storageService.getSkills();
+      const associatedSkillNames = Object.keys(allSkills).filter(skillName => 
+        (allSkills[skillName].characteristics || []).includes(charName)
+      );
+
+      console.log(`🔍 Skills associated with ${charName}:`, associatedSkillNames);
+
+      for (const skillName of associatedSkillNames) {
+        if (!affectedSkills.includes(skillName)) {
+          const skill = allSkills[skillName];
+          
+          // Calculate skill XP change based on skill type
+          const skillXPChange = this.xpCalculator.calculateSkillXP(taskXP, skill.type, completed);
+          const newSkillXP = Math.max(0, skill.xp + skillXPChange);
+          const newSkillLevel = this.xpCalculator.calculateSkillLevel(newSkillXP);
+
+          console.log(`🔍 Skill ${skillName}: XP ${skill.xp} -> ${newSkillXP} (change: ${skillXPChange}), Level ${skill.level} -> ${newSkillLevel}`);
+
+          // Update skill
+          await this.storageService.updateSkill(skillName, {
+            ...skill,
+            xp: newSkillXP,
+            level: newSkillLevel
+          });
+
+          affectedSkills.push(skillName);
+        }
+      }
+    }
 
     return affectedSkills;
   }
 
   // Update characteristics based on associated skills
   private async updateCharacteristicsFromSkills(characteristicNames: string[]): Promise<void> {
+    console.log(`🔍 Updating characteristics: ${characteristicNames.join(', ')}`);
+    
     for (const charName of characteristicNames) {
+      console.log(`🔍 Processing characteristic: ${charName}`);
       // Get all skills associated with this characteristic
       const allSkills = this.storageService.getSkills();
-      const associatedSkills = Object.entries(allSkills)
-        .filter(([_, skill]) => (skill.characteristics || []).includes(charName))
-        .map(([_, skill]) => skill);
+      const associatedSkillNames = Object.keys(allSkills).filter(skillName => 
+        (allSkills[skillName].characteristics || []).includes(charName)
+      );
+      const associatedSkills = associatedSkillNames.map(skillName => allSkills[skillName]);
+
+      console.log(`🔍 Associated skills for ${charName}:`, associatedSkillNames);
 
       if (associatedSkills.length > 0) {
         const charXP = this.xpCalculator.calculateCharacteristicXP(associatedSkills);
         const charLevel = this.xpCalculator.calculateSkillLevel(charXP);
 
+        console.log(`🔍 Characteristic ${charName}: XP ${charXP}, Level ${charLevel}`);
+
         const characteristic: Characteristic = {
           level: charLevel,
           xp: charXP,
-          associatedSkills: associatedSkills.map((_, index) => 
-            Object.keys(allSkills).filter(([_, skill]) => 
-              (skill.characteristics || []).includes(charName)
-            )[index]
-          ).filter(Boolean)
+          associatedSkills: associatedSkillNames
         };
 
         await this.storageService.updateCharacteristic(charName, characteristic);
+        console.log(`🔍 Characteristic ${charName} updated successfully`);
+      } else {
+        console.log(`🔍 No associated skills found for characteristic: ${charName}`);
       }
     }
   }
@@ -603,13 +741,17 @@ class GameEngine {
       completedAt: '',
     };
 
-    // Auto-create skills if they don't exist
-    for (const skillName of taskData.skills) {
-      const isIncreasing = taskData.increasingSkills.includes(skillName);
-      const isDecreasing = taskData.decreasingSkills.includes(skillName);
-      const skillType = isIncreasing ? 'increasing' : (isDecreasing ? 'decreasing' : 'increasing');
-      
-      await this.createSkillIfNotExists(skillName, skillType, taskData.characteristics);
+    // Auto-create characteristics if they don't exist
+    for (const charName of taskData.characteristics) {
+      const existingChar = this.storageService.getCharacteristic(charName);
+      if (!existingChar) {
+        const newCharacteristic: Characteristic = {
+          level: 1,
+          xp: 0,
+          associatedSkills: []
+        };
+        await this.storageService.updateCharacteristic(charName, newCharacteristic);
+      }
     }
 
     // Save the task
@@ -617,13 +759,16 @@ class GameEngine {
   }
 
   // Create a new reward
-  async createReward(rewardData: Omit<Reward, 'id' | 'purchased' | 'timePurchased' | 'createdAt'>): Promise<void> {
+  async createReward(rewardData: Omit<Reward, 'id' | 'purchased' | 'timePurchased' | 'createdAt' | 'timesPurchased'>): Promise<void> {
     const reward: Reward = {
       ...rewardData,
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       purchased: false,
       timePurchased: '',
       createdAt: new Date().toISOString(),
+      timesPurchased: 0,
+      // Set currentStock to totalStock if it's a finite stock reward
+      currentStock: rewardData.hasInfiniteStock ? undefined : rewardData.totalStock,
     };
 
     await this.storageService.addReward(reward);
@@ -638,10 +783,6 @@ class GameEngine {
       return { success: false, message: 'Reward not found' };
     }
     
-    if (reward.purchased) {
-      return { success: false, message: 'Reward already purchased' };
-    }
-    
     if (!hero) {
       return { success: false, message: 'Hero data not found' };
     }
@@ -650,17 +791,45 @@ class GameEngine {
       return { success: false, message: 'Insufficient gold' };
     }
     
-    // Deduct gold and mark reward as purchased
+    // Check stock availability
+    if (!reward.hasInfiniteStock) {
+      const currentStock = reward.currentStock ?? 0;
+      if (currentStock <= 0) {
+        return { success: false, message: 'Reward is out of stock' };
+      }
+    }
+    
+    // Deduct gold
     await this.storageService.updateHero({
       gold: hero.gold - reward.cost
     });
     
-    await this.storageService.updateReward(rewardId, {
-      purchased: true,
+    // Update reward stock and purchase info
+    const updatedReward: Partial<Reward> = {
+      timesPurchased: reward.timesPurchased + 1,
       timePurchased: new Date().toISOString()
-    });
+    };
     
-    return { success: true, message: 'Reward purchased successfully!' };
+    // If it's a finite stock reward, update the current stock
+    if (!reward.hasInfiniteStock) {
+      updatedReward.currentStock = (reward.currentStock ?? 0) - 1;
+      
+      // If this was a single-purchase reward (like old system), mark as purchased
+      if (reward.totalStock === 1) {
+        updatedReward.purchased = true;
+      }
+    }
+    
+    await this.storageService.updateReward(rewardId, updatedReward);
+    
+    const stockMessage = reward.hasInfiniteStock 
+      ? '' 
+      : ` (${updatedReward.currentStock} left in stock)`;
+    
+    return { 
+      success: true, 
+      message: `Reward purchased successfully!${stockMessage}` 
+    };
   }
 }
 

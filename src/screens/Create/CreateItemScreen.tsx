@@ -18,7 +18,7 @@ import { DIFFICULTY_DESCRIPTIONS, IMPORTANCE_DESCRIPTIONS, FEAR_DESCRIPTIONS } f
 import AttributeSlider from '../../components/AttributeSlider';
 import GameEngine from '../../services/GameEngine';
 import StorageService from '../../services/StorageService';
-import { RootStackParamList, Task, Quest, Group } from '../../types';
+import { RootStackParamList, Task, Quest, Group, RepetitionType, WeeklyRepetition } from '../../types';
 
 type CreateItemScreenNavigationProp = StackNavigationProp<RootStackParamList, 'CreateTask'>;
 
@@ -40,12 +40,9 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
   const [difficulty, setDifficulty] = useState(50);
   const [importance, setImportance] = useState(50);
   const [fear, setFear] = useState(50);
-  const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState('');
   const [characteristics, setCharacteristics] = useState<string[]>([]);
   const [characteristicInput, setCharacteristicInput] = useState('');
-  const [increasingSkills, setIncreasingSkills] = useState<string[]>([]);
-  const [decreasingSkills, setDecreasingSkills] = useState<string[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>('');
   const [groups, setGroups] = useState<Group[]>([]);
   
@@ -64,7 +61,8 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
   const [showTimePicker, setShowTimePicker] = useState(false);
   
   // Task repetition settings
-  const [repetition, setRepetition] = useState<'one_time' | 'continuous' | 'custom'>('one_time');
+  const [repetition, setRepetition] = useState<RepetitionType>('one_time');
+  const [selectedDaysOfWeek, setSelectedDaysOfWeek] = useState<number[]>([]);
   const [customInterval, setCustomInterval] = useState(1);
   const [customUnit, setCustomUnit] = useState<'days' | 'weeks' | 'months'>('days');
   
@@ -77,9 +75,7 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
   const [isLoading, setIsLoading] = useState(false);
   
   // Existing skills and characteristics
-  const [availableSkills, setAvailableSkills] = useState<string[]>([]);
   const [availableCharacteristics, setAvailableCharacteristics] = useState<string[]>([]);
-  const [showExistingSkills, setShowExistingSkills] = useState(false);
   const [showExistingCharacteristics, setShowExistingCharacteristics] = useState(false);
   const [showGroupModal, setShowGroupModal] = useState(false);
 
@@ -106,10 +102,8 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
   const loadExistingData = async () => {
     try {
       await storageService.initializeAppData();
-      const skills = storageService.getSkills();
       const characteristics = storageService.getCharacteristics();
       
-      setAvailableSkills(Object.keys(skills));
       setAvailableCharacteristics(Object.keys(characteristics));
     } catch (error) {
       console.error('Error loading existing data:', error);
@@ -126,19 +120,6 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   // Common functions
-  const addSkill = () => {
-    if (skillInput.trim() && !skills.includes(skillInput.trim())) {
-      const newSkill = skillInput.trim();
-      setSkills([...skills, newSkill]);
-      setSkillInput('');
-    }
-  };
-
-  const removeSkill = (skillToRemove: string) => {
-    setSkills(skills.filter(skill => skill !== skillToRemove));
-    setIncreasingSkills(increasingSkills.filter(skill => skill !== skillToRemove));
-    setDecreasingSkills(decreasingSkills.filter(skill => skill !== skillToRemove));
-  };
 
   const addCharacteristic = () => {
     if (characteristicInput.trim() && !characteristics.includes(characteristicInput.trim())) {
@@ -151,13 +132,6 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
     setCharacteristics(characteristics.filter(char => char !== charToRemove));
   };
 
-  const toggleExistingSkill = (skillName: string) => {
-    if (skills.includes(skillName)) {
-      setSkills(skills.filter(skill => skill !== skillName));
-    } else {
-      setSkills([...skills, skillName]);
-    }
-  };
 
   const toggleExistingCharacteristic = (charName: string) => {
     if (characteristics.includes(charName)) {
@@ -167,31 +141,11 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  const getAvailableSkillsFiltered = () => {
-    return availableSkills.filter(skillName => !skills.includes(skillName));
-  };
 
   const getAvailableCharacteristicsFiltered = () => {
     return availableCharacteristics.filter(charName => !characteristics.includes(charName));
   };
 
-  const toggleSkillType = (skill: string, type: 'increasing' | 'decreasing') => {
-    if (type === 'increasing') {
-      if (increasingSkills.includes(skill)) {
-        setIncreasingSkills(increasingSkills.filter(s => s !== skill));
-      } else {
-        setIncreasingSkills([...increasingSkills, skill]);
-        setDecreasingSkills(decreasingSkills.filter(s => s !== skill));
-      }
-    } else {
-      if (decreasingSkills.includes(skill)) {
-        setDecreasingSkills(decreasingSkills.filter(s => s !== skill));
-      } else {
-        setDecreasingSkills([...decreasingSkills, skill]);
-        setIncreasingSkills(increasingSkills.filter(s => s !== skill));
-      }
-    }
-  };
 
   // Quest-specific functions
   const toggleTaskSelection = (taskId: string) => {
@@ -224,13 +178,13 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
     }
 
     if (itemType === 'task') {
-      if (skills.length === 0) {
-        Alert.alert('Error', 'At least one skill is required');
-        return false;
-      }
-
       if (characteristics.length === 0) {
         Alert.alert('Error', 'At least one characteristic is required');
+        return false;
+      }
+      
+      if (repetition === 'weekly' && selectedDaysOfWeek.length === 0) {
+        Alert.alert('Error', 'Please select at least one day of the week for weekly repetition');
         return false;
       }
 
@@ -282,20 +236,17 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
       difficulty,
       importance,
       fear,
-      skills,
       characteristics,
-      increasingSkills,
-      decreasingSkills,
       dueDate: hasDueDate ? dueDate.toISOString().split('T')[0] : '',
       dueTime: hasDueDate ? dueDate.toTimeString().split(' ')[0] : '',
       repetition,
       customRepetition: repetition === 'custom' ? {
         interval: customInterval,
         unit: customUnit,
-      } : {
-        interval: 1,
-        unit: 'days',
-      },
+      } : undefined,
+      weeklyRepetition: repetition === 'weekly' ? {
+        daysOfWeek: selectedDaysOfWeek,
+      } : undefined,
       group: selectedGroup,
       notificationEnabled,
       notificationIntervals: notificationEnabled ? [60, 30, 10] : [],
@@ -328,7 +279,6 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
       createdAt: new Date().toISOString(),
       dueDate: hasDueDate && dueDate ? dueDate.toISOString() : undefined,
       notes: [],
-      skills,
       characteristics,
     };
 
@@ -564,110 +514,6 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       )}
 
-      {/* Skills */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Skills {itemType === 'task' ? '*' : ''}</Text>
-          <TouchableOpacity
-            style={styles.toggleButton}
-            onPress={() => setShowExistingSkills(!showExistingSkills)}
-          >
-            <Text style={styles.toggleButtonText}>
-              {showExistingSkills ? 'Create New' : 'Use Existing'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.sectionSubtitle}>
-          {itemType === 'task' 
-            ? 'Select skills that will gain XP when you complete this task'
-            : 'Associate skills with this quest for thematic organization'
-          }
-        </Text>
-
-        {showExistingSkills ? (
-          <View style={styles.existingSection}>
-            <Text style={styles.sectionSubtitle}>Select from existing skills:</Text>
-            {getAvailableSkillsFiltered().length === 0 ? (
-              <Text style={styles.noItemsText}>
-                {availableSkills.length === 0 
-                  ? 'No skills available. Create skills first in the Skills tab.' 
-                  : 'All available skills already selected.'}
-              </Text>
-            ) : (
-              <View style={styles.existingItemsGrid}>
-                {getAvailableSkillsFiltered().map((skillName) => (
-                  <TouchableOpacity
-                    key={skillName}
-                    style={styles.existingItem}
-                    onPress={() => toggleExistingSkill(skillName)}
-                  >
-                    <Text style={styles.existingItemText}>{skillName}</Text>
-                    <Ionicons name="add-circle" size={16} color={Colors.primary} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </View>
-        ) : (
-          <View style={styles.inputRow}>
-            <TextInput
-              style={[styles.input, styles.skillInput]}
-              placeholder="Add skill"
-              placeholderTextColor={Colors.textSecondary}
-              value={skillInput}
-              onChangeText={setSkillInput}
-              onSubmitEditing={addSkill}
-            />
-            <TouchableOpacity style={styles.addButton} onPress={addSkill}>
-              <Text style={styles.addButtonText}>+</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {itemType === 'task' && skills.length > 0 && (
-          <View style={styles.skillDirectionHelp}>
-            <Text style={styles.skillDirectionText}>
-              💡 Tap ↑ if this skill should increase when you complete the task, or ↓ if it should decrease
-            </Text>
-          </View>
-        )}
-
-        {skills.map((skill, index) => (
-          <View key={index} style={styles.skillItem}>
-            <Text style={styles.skillText}>{skill}</Text>
-            <View style={styles.skillControls}>
-              {itemType === 'task' && (
-                <>
-                  <TouchableOpacity
-                    style={[
-                      styles.skillTypeButton,
-                      increasingSkills.includes(skill) && styles.skillTypeButtonActive
-                    ]}
-                    onPress={() => toggleSkillType(skill, 'increasing')}
-                  >
-                    <Text style={styles.skillTypeText}>↑</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.skillTypeButton,
-                      decreasingSkills.includes(skill) && styles.skillTypeButtonActive
-                    ]}
-                    onPress={() => toggleSkillType(skill, 'decreasing')}
-                  >
-                    <Text style={styles.skillTypeText}>↓</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-              <TouchableOpacity
-                style={styles.removeButton}
-                onPress={() => removeSkill(skill)}
-              >
-                <Text style={styles.removeButtonText}>×</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
-      </View>
 
       {/* Characteristics */}
       <View style={styles.section}>
@@ -837,21 +683,94 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
       {itemType === 'task' && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Repetition</Text>
-          <View style={styles.repetitionButtons}>
-            {['one_time', 'continuous', 'custom'].map((type) => (
-              <TouchableOpacity
-                key={type}
-                style={[
-                  styles.repetitionButton,
-                  repetition === type && styles.repetitionButtonActive
-                ]}
-                onPress={() => setRepetition(type as any)}
-              >
-                <Text style={styles.repetitionButtonText}>
-                  {type.replace('_', ' ').toUpperCase()}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <View style={styles.repetitionContainer}>
+            <View style={styles.repetitionButtons}>
+              {[
+                { value: 'one_time', label: 'One Time' },
+                { value: 'daily', label: 'Daily' },
+                { value: 'weekdays', label: 'Weekdays' },
+              ].map((type) => (
+                <TouchableOpacity
+                  key={type.value}
+                  style={[
+                    styles.repetitionButton,
+                    repetition === type.value && styles.repetitionButtonActive
+                  ]}
+                  onPress={() => setRepetition(type.value as RepetitionType)}
+                >
+                  <Text style={[
+                    styles.repetitionButtonText,
+                    repetition === type.value && styles.repetitionButtonTextActive
+                  ]}>
+                    {type.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            
+            <View style={styles.repetitionButtons}>
+              {[
+                { value: 'weekends', label: 'Weekends' },
+                { value: 'weekly', label: 'Custom Days' },
+                { value: 'custom', label: 'Custom' },
+              ].map((type) => (
+                <TouchableOpacity
+                  key={type.value}
+                  style={[
+                    styles.repetitionButton,
+                    repetition === type.value && styles.repetitionButtonActive
+                  ]}
+                  onPress={() => setRepetition(type.value as RepetitionType)}
+                >
+                  <Text style={[
+                    styles.repetitionButtonText,
+                    repetition === type.value && styles.repetitionButtonTextActive
+                  ]}>
+                    {type.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            
+            {/* Days of Week Selector for Weekly repetition */}
+            {repetition === 'weekly' && (
+              <View style={styles.daysOfWeekContainer}>
+                <Text style={styles.sectionLabel}>Select Days of Week:</Text>
+                <View style={styles.daysOfWeekButtons}>
+                  {[
+                    { day: 0, label: 'Sun' },
+                    { day: 1, label: 'Mon' },
+                    { day: 2, label: 'Tue' },
+                    { day: 3, label: 'Wed' },
+                    { day: 4, label: 'Thu' },
+                    { day: 5, label: 'Fri' },
+                    { day: 6, label: 'Sat' },
+                  ].map((dayInfo) => (
+                    <TouchableOpacity
+                      key={dayInfo.day}
+                      style={[
+                        styles.dayButton,
+                        selectedDaysOfWeek.includes(dayInfo.day) && styles.dayButtonActive
+                      ]}
+                      onPress={() => {
+                        if (selectedDaysOfWeek.includes(dayInfo.day)) {
+                          setSelectedDaysOfWeek(selectedDaysOfWeek.filter(d => d !== dayInfo.day));
+                        } else {
+                          setSelectedDaysOfWeek([...selectedDaysOfWeek, dayInfo.day]);
+                        }
+                      }}
+                    >
+                      <Text style={[
+                        styles.dayButtonText,
+                        selectedDaysOfWeek.includes(dayInfo.day) && styles.dayButtonTextActive
+                      ]}>
+                        {dayInfo.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
           </View>
         </View>
       )}
@@ -991,6 +910,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: Colors.text,
     marginBottom: Spacing.md,
+  },
+  sectionLabel: {
+    fontSize: FontSizes.md,
+    fontWeight: '600',
+    color: Colors.text,
+    marginBottom: Spacing.sm,
   },
   sectionSubtitle: {
     fontSize: FontSizes.sm,
@@ -1352,9 +1277,13 @@ const styles = StyleSheet.create({
     color: Colors.text,
     textAlign: 'center',
   },
+  repetitionContainer: {
+    gap: Spacing.sm,
+  },
   repetitionButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: Spacing.xs,
   },
   repetitionButton: {
     backgroundColor: Colors.surface,
@@ -1372,6 +1301,47 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: Colors.text,
     textAlign: 'center',
+    fontWeight: '500',
+  },
+  repetitionButtonTextActive: {
+    color: Colors.textLight,
+    fontWeight: 'bold',
+  },
+  daysOfWeekContainer: {
+    marginTop: Spacing.md,
+    padding: Spacing.md,
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  daysOfWeekButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: Spacing.sm,
+  },
+  dayButton: {
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    minWidth: 40,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  dayButtonActive: {
+    backgroundColor: Colors.secondary,
+    borderColor: Colors.secondary,
+  },
+  dayButtonText: {
+    fontSize: FontSizes.sm,
+    color: Colors.text,
+    fontWeight: '500',
+  },
+  dayButtonTextActive: {
+    color: Colors.textLight,
+    fontWeight: 'bold',
   },
   habitConfig: {
     flexDirection: 'row',

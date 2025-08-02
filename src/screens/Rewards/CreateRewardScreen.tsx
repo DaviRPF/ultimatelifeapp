@@ -7,6 +7,7 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
+  Switch,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Colors, FontSizes, Spacing } from '../../constants/theme';
@@ -24,6 +25,10 @@ const CreateRewardScreen: React.FC<Props> = ({ navigation }) => {
   const [description, setDescription] = useState('');
   const [cost, setCost] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Stock system
+  const [hasInfiniteStock, setHasInfiniteStock] = useState(true);
+  const [totalStock, setTotalStock] = useState('1');
 
   const gameEngine = GameEngine.getInstance();
 
@@ -39,6 +44,15 @@ const CreateRewardScreen: React.FC<Props> = ({ navigation }) => {
       return false;
     }
 
+    // Validate stock if not infinite
+    if (!hasInfiniteStock) {
+      const stockNumber = parseInt(totalStock);
+      if (!totalStock.trim() || isNaN(stockNumber) || stockNumber <= 0) {
+        Alert.alert('Error', 'Please enter a valid stock quantity (positive number)');
+        return false;
+      }
+    }
+
     return true;
   };
 
@@ -47,10 +61,12 @@ const CreateRewardScreen: React.FC<Props> = ({ navigation }) => {
 
     setIsLoading(true);
     try {
-      const rewardData: Omit<Reward, 'id' | 'purchased' | 'timePurchased' | 'createdAt'> = {
+      const rewardData: Omit<Reward, 'id' | 'purchased' | 'timePurchased' | 'createdAt' | 'timesPurchased'> = {
         title: title.trim(),
         description: description.trim(),
         cost: parseInt(cost),
+        hasInfiniteStock,
+        totalStock: hasInfiniteStock ? undefined : parseInt(totalStock),
       };
 
       await gameEngine.createReward(rewardData);
@@ -122,6 +138,42 @@ const CreateRewardScreen: React.FC<Props> = ({ navigation }) => {
           <Text style={styles.helpText}>
             Set a cost that feels meaningful but achievable. Consider how much gold you typically earn per quest.
           </Text>
+        </View>
+
+        {/* Stock Configuration */}
+        <View style={styles.inputSection}>
+          <Text style={styles.label}>Stock Configuration</Text>
+          
+          <View style={styles.stockToggleContainer}>
+            <Text style={styles.stockToggleLabel}>Infinite Stock</Text>
+            <Switch
+              value={hasInfiniteStock}
+              onValueChange={setHasInfiniteStock}
+              trackColor={{ false: Colors.textSecondary, true: Colors.primary }}
+              thumbColor={hasInfiniteStock ? Colors.secondary : Colors.surface}
+            />
+          </View>
+          
+          <Text style={styles.helpText}>
+            {hasInfiniteStock 
+              ? 'This reward can be purchased unlimited times' 
+              : 'This reward has limited stock and can only be purchased a specific number of times'}
+          </Text>
+
+          {!hasInfiniteStock && (
+            <View style={styles.stockInputContainer}>
+              <Text style={styles.stockLabel}>Stock Quantity *</Text>
+              <TextInput
+                style={styles.stockInput}
+                placeholder="1"
+                placeholderTextColor={Colors.textSecondary}
+                value={totalStock}
+                onChangeText={(text) => setTotalStock(text.replace(/[^0-9]/g, ''))}
+                keyboardType="numeric"
+                maxLength={4}
+              />
+            </View>
+          )}
         </View>
 
         <View style={styles.examplesSection}>
@@ -252,6 +304,38 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.lg,
     fontWeight: 'bold',
     color: Colors.text,
+  },
+  // Stock styles
+  stockToggleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+    paddingVertical: Spacing.sm,
+  },
+  stockToggleLabel: {
+    fontSize: FontSizes.md,
+    fontWeight: '500',
+    color: Colors.text,
+  },
+  stockInputContainer: {
+    marginTop: Spacing.md,
+  },
+  stockLabel: {
+    fontSize: FontSizes.md,
+    fontWeight: '500',
+    color: Colors.text,
+    marginBottom: Spacing.sm,
+  },
+  stockInput: {
+    backgroundColor: Colors.surface,
+    borderRadius: 8,
+    padding: Spacing.md,
+    fontSize: FontSizes.md,
+    color: Colors.text,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    textAlign: 'center',
   },
 });
 

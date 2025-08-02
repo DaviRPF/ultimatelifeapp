@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppData, Hero, Task, Quest, Skill, Characteristic, Group, Reward, Achievements, BackupData } from '../types';
+import { AppData, Hero, Task, Quest, Skill, Characteristic, Group, Reward, Achievements, BackupData, WeightEntry } from '../types';
 import { DEFAULT_ACHIEVEMENTS } from '../constants/defaultAchievements';
 
 const STORAGE_KEYS = {
@@ -13,6 +13,8 @@ const INITIAL_HERO: Hero = {
   gold: 0,
   xpMultiplier: 1.0,
   createdAt: new Date().toISOString(),
+  name: 'Hero',
+  weight: undefined,
 };
 
 const INITIAL_APP_DATA: AppData = {
@@ -27,6 +29,7 @@ const INITIAL_APP_DATA: AppData = {
     default: DEFAULT_ACHIEVEMENTS.map(achievement => ({ ...achievement })),
     custom: [],
   },
+  weightEntries: [],
 };
 
 class StorageService {
@@ -351,6 +354,78 @@ class StorageService {
       console.error('Error clearing data:', error);
       throw error;
     }
+  }
+
+  // Weight management methods
+  getWeightEntries(): WeightEntry[] {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+    return this.appData.weightEntries || [];
+  }
+
+  async addWeightEntry(weight: number, notes?: string): Promise<void> {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+
+    const weightEntry: WeightEntry = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      weight,
+      date: new Date().toISOString(),
+      notes: notes?.trim() || undefined,
+    };
+
+    this.appData.weightEntries = this.appData.weightEntries || [];
+    this.appData.weightEntries.push(weightEntry);
+
+    // Update hero's current weight
+    this.appData.hero.weight = weight;
+
+    await this.saveAppData();
+  }
+
+  async updateWeightEntry(id: string, weight: number, notes?: string): Promise<void> {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+
+    const entryIndex = this.appData.weightEntries.findIndex(entry => entry.id === id);
+    if (entryIndex === -1) {
+      throw new Error('Weight entry not found');
+    }
+
+    this.appData.weightEntries[entryIndex] = {
+      ...this.appData.weightEntries[entryIndex],
+      weight,
+      notes: notes?.trim() || undefined,
+    };
+
+    // If this is the most recent entry, update hero's current weight
+    const sortedEntries = [...this.appData.weightEntries].sort((a, b) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+    if (sortedEntries[0].id === id) {
+      this.appData.hero.weight = weight;
+    }
+
+    await this.saveAppData();
+  }
+
+  async deleteWeightEntry(id: string): Promise<void> {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+
+    this.appData.weightEntries = this.appData.weightEntries.filter(entry => entry.id !== id);
+    
+    // Update hero's current weight to the most recent entry (if any)
+    const sortedEntries = [...this.appData.weightEntries].sort((a, b) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+    this.appData.hero.weight = sortedEntries.length > 0 ? sortedEntries[0].weight : undefined;
+
+    await this.saveAppData();
   }
 
   // Get storage size info

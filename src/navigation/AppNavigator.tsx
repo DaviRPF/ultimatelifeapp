@@ -18,7 +18,7 @@ import RewardsScreen from '../screens/Rewards/RewardsScreen';
 import CreateRewardScreen from '../screens/Rewards/CreateRewardScreen';
 import AchievementsScreen from '../screens/Achievements/AchievementsScreen';
 import CreateAchievementScreen from '../screens/Achievements/CreateAchievementScreen';
-import GroupsScreen from '../screens/Groups/GroupsScreen';
+import FitnessScreen from '../screens/Fitness/FitnessScreen';
 import SettingsScreen from '../screens/Settings/SettingsScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -47,14 +47,14 @@ const MainTabNavigator = () => {
             case 'Achievements':
               iconName = focused ? 'trophy' : 'trophy-outline';
               break;
-            case 'Groups':
-              iconName = focused ? 'folder' : 'folder-outline';
+            case 'Fitness':
+              iconName = focused ? 'fitness' : 'fitness-outline';
               break;
             case 'Settings':
               iconName = focused ? 'settings' : 'settings-outline';
               break;
             default:
-              iconName = 'circle';
+              iconName = 'ellipse';
           }
 
           return <Ionicons name={iconName} size={size} color={color} />;
@@ -103,9 +103,9 @@ const MainTabNavigator = () => {
         options={{ title: 'Achievements' }}
       />
       <Tab.Screen 
-        name="Groups" 
-        component={GroupsScreen}
-        options={{ title: 'Quest Groups' }}
+        name="Fitness" 
+        component={FitnessScreen}
+        options={{ title: 'Fitness Tracker' }}
       />
       <Tab.Screen 
         name="Settings" 
