@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppData, Hero, Task, Quest, Skill, Characteristic, Group, Reward, Achievements, BackupData, WeightEntry } from '../types';
+import { AppData, Hero, Task, Quest, Skill, Characteristic, Group, Reward, Achievements, BackupData, WeightEntry, BodyMeasurementEntry, BodyMeasurements, Workout } from '../types';
 import { DEFAULT_ACHIEVEMENTS } from '../constants/defaultAchievements';
 
 const STORAGE_KEYS = {
@@ -30,6 +30,8 @@ const INITIAL_APP_DATA: AppData = {
     custom: [],
   },
   weightEntries: [],
+  bodyMeasurementEntries: [],
+  workouts: [],
 };
 
 class StorageService {
@@ -52,6 +54,10 @@ class StorageService {
       
       if (existingData) {
         this.appData = JSON.parse(existingData);
+        
+        // Migrate data to ensure all fields exist
+        this.appData = this.migrateAppData(this.appData);
+        
         // Ensure default achievements are present and up to date
         this.appData!.achievements.default = this.mergeDefaultAchievements(this.appData!.achievements.default);
       } else {
@@ -65,6 +71,33 @@ class StorageService {
       this.appData = { ...INITIAL_APP_DATA };
       return this.appData;
     }
+  }
+
+  // Migrate app data to ensure all fields exist
+  private migrateAppData(data: any): AppData {
+    const migrated = {
+      ...INITIAL_APP_DATA,
+      ...data,
+    };
+
+    // Ensure all required fields exist
+    migrated.weightEntries = migrated.weightEntries || [];
+    migrated.bodyMeasurementEntries = migrated.bodyMeasurementEntries || [];
+    migrated.workouts = migrated.workouts || [];
+    migrated.achievements = migrated.achievements || { default: [], custom: [] };
+    migrated.skills = migrated.skills || {};
+    migrated.characteristics = migrated.characteristics || {};
+    migrated.groups = migrated.groups || [];
+    migrated.rewards = migrated.rewards || [];
+    migrated.tasks = migrated.tasks || [];
+    migrated.quests = migrated.quests || [];
+
+    // Ensure hero has all fields
+    if (migrated.hero) {
+      migrated.hero.bodyMeasurements = migrated.hero.bodyMeasurements || undefined;
+    }
+
+    return migrated;
   }
 
   // Merge existing default achievements with new ones
@@ -426,6 +459,155 @@ class StorageService {
     this.appData.hero.weight = sortedEntries.length > 0 ? sortedEntries[0].weight : undefined;
 
     await this.saveAppData();
+  }
+
+  // Body measurements management methods
+  getBodyMeasurementEntries(): BodyMeasurementEntry[] {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+    return this.appData.bodyMeasurementEntries || [];
+  }
+
+  async addBodyMeasurementEntry(measurements: BodyMeasurements, notes?: string): Promise<void> {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+
+    const measurementEntry: BodyMeasurementEntry = {
+      id: Date.now().toString(),
+      measurements,
+      date: new Date().toISOString(),
+      notes: notes || undefined,
+    };
+
+    this.appData.bodyMeasurementEntries = this.appData.bodyMeasurementEntries || [];
+    this.appData.bodyMeasurementEntries.push(measurementEntry);
+
+    // Update hero's current body measurements
+    this.appData.hero.bodyMeasurements = measurements;
+
+    await this.saveAppData();
+  }
+
+  async updateBodyMeasurementEntry(id: string, measurements: BodyMeasurements, notes?: string): Promise<void> {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+
+    const entryIndex = this.appData.bodyMeasurementEntries.findIndex(entry => entry.id === id);
+    if (entryIndex === -1) {
+      throw new Error('Body measurement entry not found');
+    }
+
+    this.appData.bodyMeasurementEntries[entryIndex] = {
+      ...this.appData.bodyMeasurementEntries[entryIndex],
+      measurements,
+      notes: notes || undefined,
+    };
+
+    // If this is the most recent entry, update hero's current measurements
+    const sortedEntries = [...this.appData.bodyMeasurementEntries].sort((a, b) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+    if (sortedEntries[0]?.id === id) {
+      this.appData.hero.bodyMeasurements = measurements;
+    }
+
+    await this.saveAppData();
+  }
+
+  async deleteBodyMeasurementEntry(id: string): Promise<void> {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+
+    this.appData.bodyMeasurementEntries = this.appData.bodyMeasurementEntries.filter(entry => entry.id !== id);
+
+    // Update hero's current measurements to the most recent entry (if any)
+    const sortedEntries = [...this.appData.bodyMeasurementEntries].sort((a, b) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+    this.appData.hero.bodyMeasurements = sortedEntries.length > 0 ? sortedEntries[0].measurements : undefined;
+
+    await this.saveAppData();
+  }
+
+  async updateHeroBodyMeasurements(measurements: BodyMeasurements): Promise<void> {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+
+    this.appData.hero.bodyMeasurements = measurements;
+    await this.saveAppData();
+  }
+
+  // Workout management methods
+  getWorkouts(): Workout[] {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+    return this.appData.workouts || [];
+  }
+
+  async addWorkout(workout: Workout): Promise<void> {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+
+    this.appData.workouts = this.appData.workouts || [];
+    this.appData.workouts.push(workout);
+    await this.saveAppData();
+  }
+
+  async updateWorkout(workoutId: string, workout: Workout): Promise<void> {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+
+    this.appData.workouts = this.appData.workouts || [];
+    const workoutIndex = this.appData.workouts.findIndex(w => w.id === workoutId);
+    if (workoutIndex === -1) {
+      throw new Error('Workout not found');
+    }
+
+    this.appData.workouts[workoutIndex] = workout;
+    await this.saveAppData();
+  }
+
+  async deleteWorkout(workoutId: string): Promise<void> {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+
+    this.appData.workouts = (this.appData.workouts || []).filter(w => w.id !== workoutId);
+    await this.saveAppData();
+  }
+
+  getWorkoutsByDateRange(startDate: string, endDate: string): Workout[] {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const workouts = this.appData.workouts || [];
+    
+    return workouts.filter(workout => {
+      const workoutDate = new Date(workout.date);
+      return workoutDate >= start && workoutDate <= end;
+    });
+  }
+
+  getRecentWorkouts(limit: number = 10): Workout[] {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+
+    const workouts = this.appData.workouts || [];
+    return workouts
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, limit);
   }
 
   // Get storage size info

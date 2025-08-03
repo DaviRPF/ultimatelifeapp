@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSizes, Spacing } from '../../constants/theme';
 import { DIFFICULTY_DESCRIPTIONS, IMPORTANCE_DESCRIPTIONS, FEAR_DESCRIPTIONS } from '../../constants/attributes';
 import AttributeSlider from '../../components/AttributeSlider';
+// import TaskEvaluationQuestionnaire, { QuestionnaireResult } from '../../components/TaskEvaluationQuestionnaire';
 import GameEngine from '../../services/GameEngine';
 import StorageService from '../../services/StorageService';
 import { RootStackParamList, Task, Group } from '../../types';
@@ -60,6 +61,11 @@ const CreateTaskScreen: React.FC<Props> = ({ navigation }) => {
   const [availableCharacteristics, setAvailableCharacteristics] = useState<string[]>([]);
   const [showExistingCharacteristics, setShowExistingCharacteristics] = useState(false);
   const [showGroupModal, setShowGroupModal] = useState(false);
+  
+  // Questionnaire states
+  const [useQuestionnaire, setUseQuestionnaire] = useState(false);
+  const [showQuestionnaire, setShowQuestionnaire] = useState(false);
+  const [questionnaireCompleted, setQuestionnaireCompleted] = useState(false);
 
   const gameEngine = GameEngine.getInstance();
   const storageService = StorageService.getInstance();
@@ -133,6 +139,11 @@ const CreateTaskScreen: React.FC<Props> = ({ navigation }) => {
       return false;
     }
 
+    if (useQuestionnaire && !questionnaireCompleted) {
+      Alert.alert('Error', 'Please complete the questionnaire or switch to sliders to set attributes');
+      return false;
+    }
+
     return true;
   };
 
@@ -186,9 +197,77 @@ const CreateTaskScreen: React.FC<Props> = ({ navigation }) => {
     return Math.round(((difficulty + importance + fear) / 3) * 2.5);
   };
 
+  // Questionnaire handlers
+  const handleQuestionnaireComplete = (result: any) => {
+    setDifficulty(result.difficulty);
+    setImportance(result.importance);
+    setFear(result.fear);
+    setQuestionnaireCompleted(true);
+    setShowQuestionnaire(false);
+  };
+
+  const handleQuestionnaireCancel = () => {
+    setShowQuestionnaire(false);
+  };
+
+  const startQuestionnaire = () => {
+    setShowQuestionnaire(true);
+  };
+
+  const resetToSliders = () => {
+    setUseQuestionnaire(false);
+    setQuestionnaireCompleted(false);
+    setDifficulty(50);
+    setImportance(50);
+    setFear(50);
+  };
+
+  // Debug para verificar se o estado está sendo alterado
+  console.log('🔍 RENDER - useQuestionnaire:', useQuestionnaire);
+
+  // Early return para teste - só mostrar o debug
+  if (true) { // FORÇANDO TESTE - mudando para true para mostrar apenas o debug
+    return (
+      <View style={{ flex: 1, backgroundColor: 'red', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <Text style={{ color: 'white', fontSize: 24, textAlign: 'center', marginBottom: 20 }}>
+          🚨 TESTE FORÇADO 🚨{'\n'}
+          CreateTaskScreen
+        </Text>
+        <Text style={{ color: 'yellow', fontSize: 18, textAlign: 'center', marginBottom: 20 }}>
+          useQuestionnaire: {useQuestionnaire.toString()}
+        </Text>
+        <TouchableOpacity
+          style={{ backgroundColor: 'white', padding: 15, borderRadius: 10, marginBottom: 10 }}
+          onPress={() => {
+            console.log('🔄 BOTÃO CLICADO!');
+            setUseQuestionnaire(!useQuestionnaire);
+          }}
+        >
+          <Text style={{ color: 'red', fontSize: 16, fontWeight: 'bold' }}>
+            CLIQUE PARA TESTAR: {useQuestionnaire ? 'QUESTIONÁRIO ATIVO' : 'SLIDERS ATIVOS'}
+          </Text>
+        </TouchableOpacity>
+        <Text style={{ color: 'white', fontSize: 14, textAlign: 'center' }}>
+          Se você vê esta tela vermelha, o componente está funcionando.{'\n'}
+          Se não vê, há um erro mais profundo.
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       <Text style={styles.title}>Create New Quest</Text>
+      
+      {/* DEBUG HEADER - DEVE APARECER NO TOPO */}
+      <View style={{ backgroundColor: 'purple', padding: 15, margin: 10 }}>
+        <Text style={{ color: 'white', textAlign: 'center', fontSize: 18, fontWeight: 'bold' }}>
+          🚨 SISTEMA DE QUESTIONÁRIO ADICIONADO 🚨
+        </Text>
+        <Text style={{ color: 'white', textAlign: 'center', fontSize: 14 }}>
+          Estado: {useQuestionnaire ? 'Questionário Ativo' : 'Sliders Ativos'}
+        </Text>
+      </View>
 
       {/* Basic Info */}
       <View style={styles.section}>
@@ -217,29 +296,104 @@ const CreateTaskScreen: React.FC<Props> = ({ navigation }) => {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Attributes</Text>
         
-        <AttributeSlider
-          label="Difficulty"
-          value={difficulty}
-          onValueChange={setDifficulty}
-          descriptions={DIFFICULTY_DESCRIPTIONS}
-          color={Colors.difficulty}
-        />
+        {/* TESTE VISIBILIDADE */}
+        <View style={{ backgroundColor: 'red', padding: 20, marginVertical: 10 }}>
+          <Text style={{ color: 'white', textAlign: 'center', fontSize: 16 }}>
+            TESTE VISIBILIDADE - Se você vê isso, o código está funcionando
+          </Text>
+        </View>
         
-        <AttributeSlider
-          label="Importance"
-          value={importance}
-          onValueChange={setImportance}
-          descriptions={IMPORTANCE_DESCRIPTIONS}
-          color={Colors.importance}
-        />
-        
-        <AttributeSlider
-          label="Fear/Anxiety"
-          value={fear}
-          onValueChange={setFear}
-          descriptions={FEAR_DESCRIPTIONS}
-          color={Colors.fear}
-        />
+        {/* BOTÃO PARA ALTERNAR MÉTODO */}
+        <TouchableOpacity
+          style={{
+            backgroundColor: useQuestionnaire ? '#4CAF50' : '#2196F3',
+            padding: 15,
+            borderRadius: 10,
+            marginVertical: 10,
+            alignItems: 'center',
+          }}
+          onPress={() => {
+            console.log('🔄 TOGGLE PRESSED - Current:', useQuestionnaire, '-> New:', !useQuestionnaire);
+            setUseQuestionnaire(!useQuestionnaire);
+          }}
+        >
+          <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>
+            {useQuestionnaire ? '📋 USANDO QUESTIONÁRIO - Clique para Sliders' : '🎚️ USANDO SLIDERS - Clique para Questionário'}
+          </Text>
+        </TouchableOpacity>
+
+        <View style={{ backgroundColor: 'yellow', padding: 10, marginVertical: 5 }}>
+          <Text style={{ color: 'black', textAlign: 'center' }}>
+            Estado atual: {useQuestionnaire ? 'QUESTIONÁRIO' : 'SLIDERS'}
+          </Text>
+        </View>
+
+        {useQuestionnaire ? (
+          <View style={styles.questionnaireSection}>
+            <Text style={styles.sectionSubtitle}>
+              Responda 15 perguntas para uma avaliação mais precisa dos atributos da sua quest.
+            </Text>
+            
+            {questionnaireCompleted ? (
+              <View style={styles.questionnaireResults}>
+                <View style={styles.resultRow}>
+                  <Text style={styles.resultLabel}>Dificuldade:</Text>
+                  <Text style={[styles.resultValue, { color: Colors.difficulty }]}>{difficulty}%</Text>
+                </View>
+                <View style={styles.resultRow}>
+                  <Text style={styles.resultLabel}>Importância:</Text>
+                  <Text style={[styles.resultValue, { color: Colors.importance }]}>{importance}%</Text>
+                </View>
+                <View style={styles.resultRow}>
+                  <Text style={styles.resultLabel}>Medo/Ansiedade:</Text>
+                  <Text style={[styles.resultValue, { color: Colors.fear }]}>{fear}%</Text>
+                </View>
+                
+                <TouchableOpacity
+                  style={styles.redoQuestionnaireButton}
+                  onPress={startQuestionnaire}
+                >
+                  <Ionicons name="refresh" size={16} color={Colors.primary} />
+                  <Text style={styles.redoQuestionnaireText}>Refazer Questionário</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.startQuestionnaireButton}
+                onPress={startQuestionnaire}
+              >
+                <Ionicons name="help-circle" size={20} color={Colors.background} />
+                <Text style={styles.startQuestionnaireText}>Iniciar Questionário</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
+          <View style={styles.slidersSection}>
+            <AttributeSlider
+              label="Difficulty"
+              value={difficulty}
+              onValueChange={setDifficulty}
+              descriptions={DIFFICULTY_DESCRIPTIONS}
+              color={Colors.difficulty}
+            />
+            
+            <AttributeSlider
+              label="Importance"
+              value={importance}
+              onValueChange={setImportance}
+              descriptions={IMPORTANCE_DESCRIPTIONS}
+              color={Colors.importance}
+            />
+            
+            <AttributeSlider
+              label="Fear/Anxiety"
+              value={fear}
+              onValueChange={setFear}
+              descriptions={FEAR_DESCRIPTIONS}
+              color={Colors.fear}
+            />
+          </View>
+        )}
 
         <View style={styles.xpPreview}>
           <Text style={styles.xpText}>Estimated XP: {calculateXP()}</Text>
@@ -496,6 +650,26 @@ const CreateTaskScreen: React.FC<Props> = ({ navigation }) => {
               <Text style={styles.modalCloseText}>Cancel</Text>
             </TouchableOpacity>
           </View>
+        </View>
+      </Modal>
+
+      {/* Questionnaire Modal */}
+      <Modal
+        visible={showQuestionnaire}
+        animationType="slide"
+        presentationStyle="fullScreen"
+      >
+        <View style={{ flex: 1, backgroundColor: 'green', justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: 'white', fontSize: 20, textAlign: 'center' }}>
+            MODAL DO QUESTIONÁRIO{'\n'}
+            (Componente será adicionado aqui)
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: 'white', padding: 15, borderRadius: 10, marginTop: 20 }}
+            onPress={handleQuestionnaireCancel}
+          >
+            <Text style={{ color: 'green', fontSize: 16, fontWeight: 'bold' }}>Fechar</Text>
+          </TouchableOpacity>
         </View>
       </Modal>
     </ScrollView>
@@ -829,6 +1003,116 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     backgroundColor: Colors.surface,
     borderRadius: 8,
+  },
+  // Questionnaire Toggle Styles
+  questionnaireToggleContainer: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    borderWidth: 2,
+    borderColor: Colors.border,
+  },
+  toggleLabel: {
+    fontSize: FontSizes.md,
+    color: Colors.text,
+    fontWeight: '600',
+    marginBottom: Spacing.sm,
+    textAlign: 'center',
+  },
+  questionnaireToggle: {
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    padding: Spacing.md,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    alignItems: 'center',
+  },
+  questionnaireToggleActive: {
+    backgroundColor: Colors.primary,
+  },
+  questionnaireToggleText: {
+    fontSize: FontSizes.md,
+    color: Colors.primary,
+    fontWeight: 'bold',
+  },
+  questionnaireToggleTextActive: {
+    color: Colors.background,
+  },
+  debugText: {
+    fontSize: FontSizes.xs,
+    color: Colors.warning,
+    textAlign: 'center',
+    backgroundColor: Colors.surface,
+    padding: Spacing.xs,
+    borderRadius: 4,
+    marginBottom: Spacing.md,
+    fontFamily: 'monospace',
+  },
+  // Questionnaire Styles
+  questionnaireSection: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  slidersSection: {
+    // No specific styles needed, just a wrapper
+  },
+  startQuestionnaireButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    padding: Spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+  startQuestionnaireText: {
+    fontSize: FontSizes.md,
+    fontWeight: 'bold',
+    color: Colors.background,
+  },
+  questionnaireResults: {
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    padding: Spacing.md,
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+  resultRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: Spacing.xs,
+  },
+  resultLabel: {
+    fontSize: FontSizes.md,
+    color: Colors.text,
+    fontWeight: '500',
+  },
+  resultValue: {
+    fontSize: FontSizes.lg,
+    fontWeight: 'bold',
+  },
+  redoQuestionnaireButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: 8,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    gap: Spacing.xs,
+  },
+  redoQuestionnaireText: {
+    fontSize: FontSizes.sm,
+    color: Colors.primary,
+    fontWeight: '600',
   },
 });
 

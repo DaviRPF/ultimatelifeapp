@@ -10,28 +10,35 @@ import {
   TextInput,
   RefreshControl,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSizes, Spacing } from '../../constants/theme';
 import StorageService from '../../services/StorageService';
 import WeightChart from '../../components/WeightChart';
-import { WeightEntry, Hero } from '../../types';
+import FitnessBackupService from '../../services/FitnessBackupService';
+import { WeightEntry, Hero, Workout } from '../../types';
 
 const FitnessScreen = () => {
+  const navigation = useNavigation();
   const [weightEntries, setWeightEntries] = useState<WeightEntry[]>([]);
   const [hero, setHero] = useState<Hero | null>(null);
+  const [recentWorkouts, setRecentWorkouts] = useState<Workout[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showChart, setShowChart] = useState(false);
+  const [showBackupModal, setShowBackupModal] = useState(false);
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
   const [editingEntry, setEditingEntry] = useState<WeightEntry | null>(null);
   
   // Form states
   const [weightInput, setWeightInput] = useState('');
   const [notesInput, setNotesInput] = useState('');
+  const [confirmationText, setConfirmationText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const storageService = StorageService.getInstance();
+  const backupService = FitnessBackupService.getInstance();
 
   useFocusEffect(
     useCallback(() => {
@@ -47,6 +54,8 @@ const FitnessScreen = () => {
       setWeightEntries(storageService.getWeightEntries().sort((a, b) => 
         new Date(b.date).getTime() - new Date(a.date).getTime()
       ));
+      const workouts = storageService.getRecentWorkouts(5) || [];
+      setRecentWorkouts(workouts);
     } catch (error) {
       console.error('Error loading fitness data:', error);
       Alert.alert('Error', 'Failed to load fitness data');
@@ -170,17 +179,153 @@ const FitnessScreen = () => {
 
   const weightTrend = getWeightTrend();
 
+  // Backup functions
+  const handleExportBackup = async () => {
+    try {
+      setIsLoading(true);
+      await backupService.exportBackup();
+      Alert.alert(
+        'Backup Exported! 📦',
+        'Your fitness data has been exported successfully. You can share or save this file to restore your data later.',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Export error:', error);
+      Alert.alert('Error', 'Failed to export backup. Please try again.');
+    } finally {
+      setIsLoading(false);
+      setShowBackupModal(false);
+    }
+  };
+
+  const handleImportBackup = async () => {
+    try {
+      const filePath = await backupService.selectBackupFile();
+      if (!filePath) return;
+
+      const stats = await backupService.getBackupStats(filePath);
+      
+      Alert.alert(
+        'Import Fitness Backup',
+        `This backup contains:
+• ${stats.weightEntries} weight entries
+• ${stats.bodyMeasurementEntries} body measurements
+• ${stats.workouts} workouts
+• Exported: ${new Date(stats.exportDate).toLocaleDateString()}
+
+How would you like to import this data?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Merge with existing',
+            onPress: () => performRestore(filePath, false),
+          },
+          {
+            text: 'Replace all data',
+            style: 'destructive',
+            onPress: () => confirmReplaceAll(filePath),
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Import error:', error);
+      Alert.alert('Error', 'Failed to import backup. Please check if the file is valid.');
+    }
+  };
+
+  const confirmReplaceAll = (filePath: string) => {
+    Alert.alert(
+      'Replace All Data?',
+      'This will permanently delete all your current fitness data and replace it with the backup data. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Replace All',
+          style: 'destructive',
+          onPress: () => performRestore(filePath, true),
+        },
+      ]
+    );
+  };
+
+  const performRestore = async (filePath: string, replaceExisting: boolean) => {
+    try {
+      setIsLoading(true);
+      await backupService.restoreFromBackup(filePath, replaceExisting);
+      await loadData();
+      
+      Alert.alert(
+        'Backup Restored! ✅',
+        replaceExisting 
+          ? 'All fitness data has been replaced with the backup data.'
+          : 'Backup data has been merged with your existing data.',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Restore error:', error);
+      Alert.alert('Error', 'Failed to restore backup. Please try again.');
+    } finally {
+      setIsLoading(false);
+      setShowBackupModal(false);
+    }
+  };
+
+  // Delete All Functions
+  const requiredConfirmationText = "Eu quero apagar todos os meus dados de fitness permanentemente";
+
+  const handleDeleteAllData = async () => {
+    if (confirmationText.trim() !== requiredConfirmationText) {
+      Alert.alert(
+        'Texto de confirmação incorreto',
+        'Digite exatamente a frase solicitada para confirmar a exclusão de todos os dados.'
+      );
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      await backupService.clearAllFitnessData();
+      await loadData();
+      setShowDeleteAllModal(false);
+      setConfirmationText('');
+      
+      Alert.alert(
+        'Dados Apagados! 🗑️',
+        'Todos os seus dados de fitness foram apagados permanentemente.',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Error deleting all data:', error);
+      Alert.alert('Erro', 'Falha ao apagar todos os dados. Tente novamente.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const resetDeleteAllModal = () => {
+    setConfirmationText('');
+    setShowDeleteAllModal(false);
+  };
+
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Fitness Tracker</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => setShowAddModal(true)}
-        >
-          <Ionicons name="add" size={24} color={Colors.text} />
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={styles.backupButton}
+            onPress={() => setShowBackupModal(true)}
+          >
+            <Ionicons name="cloud" size={20} color={Colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => setShowAddModal(true)}
+          >
+            <Ionicons name="add" size={24} color={Colors.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Current Weight Card */}
@@ -208,6 +353,116 @@ const FitnessScreen = () => {
           </View>
         </TouchableOpacity>
       )}
+
+      {/* Body Measurements Card */}
+      <TouchableOpacity 
+        style={styles.measurementsCard}
+        onPress={() => navigation.navigate('BodyMeasurements' as never)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.cardTitle}>Body Measurements 📏</Text>
+        <View style={styles.measurementsDisplay}>
+          {hero?.bodyMeasurements ? (
+            <View style={styles.measurementSummary}>
+              {Object.entries(hero.bodyMeasurements)
+                .filter(([_, value]) => value && value > 0)
+                .slice(0, 3) // Show only first 3 measurements
+                .map(([key, value]) => {
+                  const labels: Record<string, string> = {
+                    bracoRelaxado: 'Braço',
+                    bracoContraido: 'Braço C.',
+                    antebraco: 'Antebraço',
+                    peitoral: 'Peitoral',
+                    abdomen: 'Abdômen',
+                    gluteo: 'Glúteo',
+                    deltoides: 'Deltoides',
+                    perna: 'Perna',
+                    panturrilha: 'Panturrilha'
+                  };
+                  
+                  return (
+                    <View key={key} style={styles.measurementItem}>
+                      <Text style={styles.measurementLabel}>{labels[key] || key}</Text>
+                      <Text style={styles.measurementValue}>{value} cm</Text>
+                    </View>
+                  );
+                })}
+              {Object.keys(hero.bodyMeasurements).length > 3 && (
+                <Text style={styles.moreText}>+{Object.keys(hero.bodyMeasurements).length - 3} more</Text>
+              )}
+            </View>
+          ) : (
+            <View style={styles.noMeasurementsContainer}>
+              <Text style={styles.noMeasurementsText}>No measurements recorded</Text>
+              <Text style={styles.tapToAddText}>Tap to add measurements</Text>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+
+      {/* Workouts Card */}
+      <TouchableOpacity 
+        style={styles.workoutsCard}
+        onPress={() => navigation.navigate('WorkoutHistory' as never)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.workoutsHeader}>
+          <Text style={styles.cardTitle}>Strength Training 💪</Text>
+          <TouchableOpacity
+            style={styles.addWorkoutButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              navigation.navigate('CreateWorkout' as never);
+            }}
+          >
+            <Ionicons name="add-circle" size={20} color={Colors.primary} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.workoutsDisplay}>
+          {recentWorkouts.length > 0 ? (
+            <View style={styles.workoutsSummary}>
+              <View style={styles.workoutsStats}>
+                <View style={styles.workoutStatItem}>
+                  <Text style={styles.workoutStatValue}>{recentWorkouts.length}</Text>
+                  <Text style={styles.workoutStatLabel}>Recent</Text>
+                </View>
+                <View style={styles.workoutStatItem}>
+                  <Text style={styles.workoutStatValue}>
+                    {recentWorkouts.reduce((acc, w) => acc + (w.exercises?.length || 0), 0)}
+                  </Text>
+                  <Text style={styles.workoutStatLabel}>Exercises</Text>
+                </View>
+                <View style={styles.workoutStatItem}>
+                  <Text style={styles.workoutStatValue}>
+                    {recentWorkouts.length > 0 
+                      ? Math.round(recentWorkouts.reduce((acc, w) => acc + (w.totalDuration || 0), 0) / recentWorkouts.length)
+                      : 0}m
+                  </Text>
+                  <Text style={styles.workoutStatLabel}>Avg Time</Text>
+                </View>
+              </View>
+              <View style={styles.recentWorkoutsList}>
+                {recentWorkouts.slice(0, 2).map((workout) => (
+                  <View key={workout.id} style={styles.recentWorkoutItem}>
+                    <Text style={styles.recentWorkoutName}>{workout.name}</Text>
+                    <Text style={styles.recentWorkoutDate}>
+                      {new Date(workout.date).toLocaleDateString()}
+                    </Text>
+                  </View>
+                ))}
+                {recentWorkouts.length > 2 && (
+                  <Text style={styles.moreWorkoutsText}>+{recentWorkouts.length - 2} more workouts</Text>
+                )}
+              </View>
+            </View>
+          ) : (
+            <View style={styles.noWorkoutsContainer}>
+              <Text style={styles.noWorkoutsText}>No workouts recorded</Text>
+              <Text style={styles.tapToAddWorkoutText}>Tap to create your first workout</Text>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
 
       {/* Weight History */}
       <ScrollView
@@ -264,6 +519,81 @@ const FitnessScreen = () => {
           </>
         )}
       </ScrollView>
+
+      {/* Backup Modal */}
+      <Modal
+        visible={showBackupModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowBackupModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Fitness Backup & Restore</Text>
+            
+            <View style={styles.backupSection}>
+              <Text style={styles.backupSectionTitle}>📦 Export Backup</Text>
+              <Text style={styles.backupDescription}>
+                Create a backup file with all your fitness data including weights, measurements, and workouts.
+              </Text>
+              <TouchableOpacity
+                style={[styles.backupActionButton, styles.exportButton]}
+                onPress={handleExportBackup}
+                disabled={isLoading}
+              >
+                <Ionicons name="download" size={20} color={Colors.background} />
+                <Text style={styles.backupActionButtonText}>
+                  {isLoading ? 'Exporting...' : 'Export Backup'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.backupSection}>
+              <Text style={styles.backupSectionTitle}>📁 Import Backup</Text>
+              <Text style={styles.backupDescription}>
+                Restore your fitness data from a previously exported backup file.
+              </Text>
+              <TouchableOpacity
+                style={[styles.backupActionButton, styles.importButton]}
+                onPress={handleImportBackup}
+                disabled={isLoading}
+              >
+                <Ionicons name="cloud-upload" size={20} color={Colors.background} />
+                <Text style={styles.backupActionButtonText}>
+                  {isLoading ? 'Importing...' : 'Import Backup'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.backupSection}>
+              <Text style={styles.backupSectionTitle}>🗑️ Apagar Todos os Dados</Text>
+              <Text style={styles.backupDescription}>
+                ATENÇÃO: Esta ação apagará permanentemente todos os seus dados de fitness, incluindo pesos, medidas e treinos.
+              </Text>
+              <TouchableOpacity
+                style={[styles.backupActionButton, styles.deleteAllButton]}
+                onPress={() => {
+                  setShowBackupModal(false);
+                  setShowDeleteAllModal(true);
+                }}
+                disabled={isLoading}
+              >
+                <Ionicons name="trash" size={20} color={Colors.background} />
+                <Text style={styles.backupActionButtonText}>
+                  Apagar Tudo
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => setShowBackupModal(false)}
+            >
+              <Text style={styles.cancelButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Add Weight Modal */}
       <Modal
@@ -411,6 +741,75 @@ const FitnessScreen = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Delete All Confirmation Modal */}
+      <Modal
+        visible={showDeleteAllModal}
+        transparent
+        animationType="slide"
+        onRequestClose={resetDeleteAllModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>⚠️ Apagar Todos os Dados</Text>
+            
+            <View style={styles.warningSection}>
+              <Text style={styles.warningTitle}>ATENÇÃO: Esta ação é irreversível!</Text>
+              <Text style={styles.warningText}>
+                Todos os seus dados de fitness serão apagados permanentemente, incluindo:
+              </Text>
+              <Text style={styles.warningList}>
+                • Histórico de peso{'\n'}
+                • Medidas corporais{'\n'}
+                • Treinos e exercícios{'\n'}
+                • Todas as estatísticas
+              </Text>
+              <Text style={styles.warningText}>
+                Para confirmar, digite exatamente a frase abaixo:
+              </Text>
+              <Text style={styles.confirmationPhrase}>
+                "{requiredConfirmationText}"
+              </Text>
+            </View>
+
+            <View style={styles.inputSection}>
+              <Text style={styles.inputLabel}>Digite a frase de confirmação:</Text>
+              <TextInput
+                style={[styles.input, styles.confirmationInput]}
+                placeholder="Digite a frase exata..."
+                placeholderTextColor={Colors.textSecondary}
+                value={confirmationText}
+                onChangeText={setConfirmationText}
+                multiline
+                numberOfLines={3}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={resetDeleteAllModal}
+              >
+                <Text style={styles.cancelButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.deleteAllConfirmButton, 
+                  (confirmationText.trim() !== requiredConfirmationText || isLoading) && styles.deleteAllConfirmButtonDisabled
+                ]}
+                onPress={handleDeleteAllData}
+                disabled={confirmationText.trim() !== requiredConfirmationText || isLoading}
+              >
+                <Text style={styles.deleteAllConfirmButtonText}>
+                  {isLoading ? 'Apagando...' : 'Apagar Tudo'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -431,6 +830,21 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xxl,
     fontWeight: 'bold',
     color: Colors.text,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  backupButton: {
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   addButton: {
     backgroundColor: Colors.primary,
@@ -473,6 +887,147 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     fontWeight: '500',
     marginLeft: Spacing.xs,
+  },
+  measurementsCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: Spacing.lg,
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  measurementsDisplay: {
+    minHeight: 60,
+  },
+  measurementSummary: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    alignItems: 'center',
+  },
+  measurementItem: {
+    backgroundColor: Colors.background,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  measurementLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.textSecondary,
+    marginBottom: 2,
+  },
+  measurementValue: {
+    fontSize: FontSizes.sm,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  moreText: {
+    fontSize: FontSizes.sm,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+  },
+  noMeasurementsContainer: {
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+  },
+  noMeasurementsText: {
+    fontSize: FontSizes.md,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.xs,
+  },
+  tapToAddText: {
+    fontSize: FontSizes.sm,
+    color: Colors.primary,
+    fontWeight: '500',
+  },
+  workoutsCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: Spacing.lg,
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  workoutsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  addWorkoutButton: {
+    padding: Spacing.xs,
+  },
+  workoutsDisplay: {
+    minHeight: 80,
+  },
+  workoutsSummary: {
+    gap: Spacing.md,
+  },
+  workoutsStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: Spacing.sm,
+  },
+  workoutStatItem: {
+    alignItems: 'center',
+  },
+  workoutStatValue: {
+    fontSize: FontSizes.lg,
+    fontWeight: 'bold',
+    color: Colors.primary,
+    marginBottom: Spacing.xs,
+  },
+  workoutStatLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.textSecondary,
+  },
+  recentWorkoutsList: {
+    gap: Spacing.sm,
+  },
+  recentWorkoutItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: Colors.background,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  recentWorkoutName: {
+    fontSize: FontSizes.sm,
+    fontWeight: '600',
+    color: Colors.text,
+    flex: 1,
+  },
+  recentWorkoutDate: {
+    fontSize: FontSizes.xs,
+    color: Colors.textSecondary,
+  },
+  moreWorkoutsText: {
+    fontSize: FontSizes.sm,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
+  noWorkoutsContainer: {
+    alignItems: 'center',
+    paddingVertical: Spacing.lg,
+  },
+  noWorkoutsText: {
+    fontSize: FontSizes.md,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.xs,
+  },
+  tapToAddWorkoutText: {
+    fontSize: FontSizes.sm,
+    color: Colors.primary,
+    fontWeight: '500',
   },
   scrollView: {
     flex: 1,
@@ -691,6 +1246,113 @@ const styles = StyleSheet.create({
     margin: Spacing.sm,
     borderRadius: 8,
     textAlign: 'center',
+    fontWeight: 'bold',
+  },
+  // Backup Modal Styles
+  backupSection: {
+    marginBottom: Spacing.lg,
+    padding: Spacing.md,
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  backupSectionTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: Spacing.sm,
+  },
+  backupDescription: {
+    fontSize: FontSizes.sm,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.md,
+    lineHeight: 18,
+  },
+  backupActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+  },
+  exportButton: {
+    backgroundColor: Colors.success,
+  },
+  importButton: {
+    backgroundColor: Colors.primary,
+  },
+  deleteAllButton: {
+    backgroundColor: Colors.danger,
+  },
+  backupActionButtonText: {
+    fontSize: FontSizes.md,
+    fontWeight: 'bold',
+    color: Colors.background,
+  },
+  // Delete All Modal Styles
+  warningSection: {
+    backgroundColor: '#ffebee',
+    borderRadius: 8,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.danger,
+  },
+  warningTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: 'bold',
+    color: Colors.danger,
+    marginBottom: Spacing.sm,
+    textAlign: 'center',
+  },
+  warningText: {
+    fontSize: FontSizes.sm,
+    color: Colors.text,
+    marginBottom: Spacing.sm,
+    lineHeight: 18,
+  },
+  warningList: {
+    fontSize: FontSizes.sm,
+    color: Colors.text,
+    marginBottom: Spacing.sm,
+    marginLeft: Spacing.md,
+    lineHeight: 20,
+  },
+  confirmationPhrase: {
+    fontSize: FontSizes.sm,
+    fontWeight: 'bold',
+    color: Colors.danger,
+    backgroundColor: Colors.background,
+    padding: Spacing.sm,
+    borderRadius: 6,
+    marginTop: Spacing.sm,
+    textAlign: 'center',
+    borderWidth: 1,
+    borderColor: Colors.danger,
+  },
+  confirmationInput: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+    borderColor: Colors.danger,
+    borderWidth: 2,
+  },
+  deleteAllConfirmButton: {
+    backgroundColor: Colors.danger,
+    borderRadius: 8,
+    padding: Spacing.md,
+    flex: 1,
+    marginLeft: Spacing.sm,
+    alignItems: 'center',
+  },
+  deleteAllConfirmButtonDisabled: {
+    backgroundColor: Colors.surfaceDark,
+    opacity: 0.5,
+  },
+  deleteAllConfirmButtonText: {
+    color: Colors.background,
+    fontSize: FontSizes.md,
     fontWeight: 'bold',
   },
 });

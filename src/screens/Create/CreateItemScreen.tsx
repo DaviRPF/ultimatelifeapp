@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSizes, Spacing } from '../../constants/theme';
 import { DIFFICULTY_DESCRIPTIONS, IMPORTANCE_DESCRIPTIONS, FEAR_DESCRIPTIONS } from '../../constants/attributes';
 import AttributeSlider from '../../components/AttributeSlider';
+import TaskEvaluationQuestionnaire, { QuestionnaireResult } from '../../components/TaskEvaluationQuestionnaire';
 import GameEngine from '../../services/GameEngine';
 import StorageService from '../../services/StorageService';
 import { RootStackParamList, Task, Quest, Group, RepetitionType, WeeklyRepetition } from '../../types';
@@ -78,6 +79,11 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
   const [availableCharacteristics, setAvailableCharacteristics] = useState<string[]>([]);
   const [showExistingCharacteristics, setShowExistingCharacteristics] = useState(false);
   const [showGroupModal, setShowGroupModal] = useState(false);
+  
+  // Questionnaire states
+  const [useQuestionnaire, setUseQuestionnaire] = useState(false);
+  const [showQuestionnaire, setShowQuestionnaire] = useState(false);
+  const [questionnaireCompleted, setQuestionnaireCompleted] = useState(false);
 
   const gameEngine = GameEngine.getInstance();
   const storageService = StorageService.getInstance();
@@ -290,6 +296,23 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
     return Math.round(((difficulty + importance + fear) / 3) * 2.5);
   };
 
+  // Questionnaire handlers
+  const handleQuestionnaireComplete = (result: QuestionnaireResult) => {
+    setDifficulty(result.difficulty);
+    setImportance(result.importance);
+    setFear(result.fear);
+    setQuestionnaireCompleted(true);
+    setShowQuestionnaire(false);
+  };
+
+  const handleQuestionnaireCancel = () => {
+    setShowQuestionnaire(false);
+  };
+
+  const startQuestionnaire = () => {
+    setShowQuestionnaire(true);
+  };
+
   const onDateChange = (event: any, selectedDate?: Date) => {
     setShowDatePicker(false);
     setShowTimePicker(false);
@@ -428,34 +451,87 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
       {/* Task Attributes (Task only) */}
       {itemType === 'task' && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Attributes</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Attributes</Text>
+            <TouchableOpacity
+              style={styles.questionnaireToggleButton}
+              onPress={() => setUseQuestionnaire(!useQuestionnaire)}
+            >
+              <Text style={styles.questionnaireToggleButtonText}>
+                {useQuestionnaire ? '🎚️ Sliders' : '📋 Questionário'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
           <Text style={styles.sectionSubtitle}>
-            Set the challenge level - higher values = more XP
+            {useQuestionnaire 
+              ? 'Responda 15 perguntas para uma avaliação precisa dos atributos'
+              : 'Set the challenge level - higher values = more XP'
+            }
           </Text>
-          
-          <AttributeSlider
-            label="Difficulty"
-            value={difficulty}
-            onValueChange={setDifficulty}
-            descriptions={DIFFICULTY_DESCRIPTIONS}
-            color={Colors.difficulty}
-          />
-          
-          <AttributeSlider
-            label="Importance"
-            value={importance}
-            onValueChange={setImportance}
-            descriptions={IMPORTANCE_DESCRIPTIONS}
-            color={Colors.importance}
-          />
-          
-          <AttributeSlider
-            label="Fear/Anxiety"
-            value={fear}
-            onValueChange={setFear}
-            descriptions={FEAR_DESCRIPTIONS}
-            color={Colors.fear}
-          />
+
+          {useQuestionnaire ? (
+            <View style={styles.questionnaireSection}>
+              {questionnaireCompleted ? (
+                <View style={styles.questionnaireResults}>
+                  <View style={styles.resultRow}>
+                    <Text style={styles.resultLabel}>Dificuldade:</Text>
+                    <Text style={[styles.resultValue, { color: Colors.difficulty }]}>{difficulty}%</Text>
+                  </View>
+                  <View style={styles.resultRow}>
+                    <Text style={styles.resultLabel}>Importância:</Text>
+                    <Text style={[styles.resultValue, { color: Colors.importance }]}>{importance}%</Text>
+                  </View>
+                  <View style={styles.resultRow}>
+                    <Text style={styles.resultLabel}>Medo/Ansiedade:</Text>
+                    <Text style={[styles.resultValue, { color: Colors.fear }]}>{fear}%</Text>
+                  </View>
+                  
+                  <TouchableOpacity
+                    style={styles.redoQuestionnaireButton}
+                    onPress={startQuestionnaire}
+                  >
+                    <Ionicons name="refresh" size={16} color={Colors.primary} />
+                    <Text style={styles.redoQuestionnaireText}>Refazer Questionário</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.startQuestionnaireButton}
+                  onPress={startQuestionnaire}
+                >
+                  <Ionicons name="help-circle" size={20} color={Colors.background} />
+                  <Text style={styles.startQuestionnaireText}>Iniciar Questionário de Avaliação</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            <View style={styles.slidersSection}>
+              <AttributeSlider
+                label="Difficulty"
+                value={difficulty}
+                onValueChange={setDifficulty}
+                descriptions={DIFFICULTY_DESCRIPTIONS}
+                color={Colors.difficulty}
+              />
+              
+              <AttributeSlider
+                label="Importance"
+                value={importance}
+                onValueChange={setImportance}
+                descriptions={IMPORTANCE_DESCRIPTIONS}
+                color={Colors.importance}
+              />
+              
+              <AttributeSlider
+                label="Fear/Anxiety"
+                value={fear}
+                onValueChange={setFear}
+                descriptions={FEAR_DESCRIPTIONS}
+                color={Colors.fear}
+              />
+            </View>
+          )}
 
           <View style={styles.xpPreview}>
             <Text style={styles.xpText}>Estimated XP: {calculateXP()}</Text>
@@ -875,6 +951,18 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
             </TouchableOpacity>
           </View>
         </View>
+      </Modal>
+
+      {/* Questionnaire Modal */}
+      <Modal
+        visible={showQuestionnaire}
+        animationType="slide"
+        presentationStyle="fullScreen"
+      >
+        <TaskEvaluationQuestionnaire
+          onComplete={handleQuestionnaireComplete}
+          onCancel={handleQuestionnaireCancel}
+        />
       </Modal>
     </ScrollView>
   );
@@ -1425,6 +1513,87 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.md,
     fontWeight: 'bold',
     color: Colors.text,
+  },
+  // Questionnaire Styles
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  questionnaireToggleButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: 20,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+  },
+  questionnaireToggleButtonText: {
+    fontSize: FontSizes.sm,
+    color: Colors.background,
+    fontWeight: 'bold',
+  },
+  questionnaireSection: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: Spacing.lg,
+    marginVertical: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  slidersSection: {
+    // No specific styles needed, just a wrapper
+  },
+  startQuestionnaireButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    padding: Spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  startQuestionnaireText: {
+    fontSize: FontSizes.md,
+    fontWeight: 'bold',
+    color: Colors.background,
+  },
+  questionnaireResults: {
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+  },
+  resultRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: Spacing.xs,
+  },
+  resultLabel: {
+    fontSize: FontSizes.md,
+    color: Colors.text,
+    fontWeight: '500',
+  },
+  resultValue: {
+    fontSize: FontSizes.lg,
+    fontWeight: 'bold',
+  },
+  redoQuestionnaireButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: 8,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    gap: Spacing.xs,
+  },
+  redoQuestionnaireText: {
+    fontSize: FontSizes.sm,
+    color: Colors.primary,
+    fontWeight: '600',
   },
 });
 

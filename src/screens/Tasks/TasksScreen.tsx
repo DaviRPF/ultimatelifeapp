@@ -18,7 +18,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { Task, RootStackParamList, RepetitionType } from '../../types';
 import StorageService from '../../services/StorageService';
 import GameEngine from '../../services/GameEngine';
-import TaskCard from '../../components/TaskCard';
+import AnimatedTaskCard from '../../components/AnimatedTaskCard';
+import AnimatedFeedback from '../../components/AnimatedFeedback';
+import FloatingXP from '../../components/FloatingXP';
+import SoundService from '../../services/SoundService';
 import { Colors, FontSizes, Spacing } from '../../constants/theme';
 
 type TaskStatus = 'all' | 'today' | 'active' | 'completed' | 'failed';
@@ -27,6 +30,21 @@ interface AchievementNotification {
   id: string;
   title: string;
   visible: boolean;
+}
+
+interface FloatingXPData {
+  id: string;
+  xp: number;
+  startX: number;
+  startY: number;
+  visible: boolean;
+}
+
+interface FeedbackData {
+  visible: boolean;
+  type: 'taskComplete' | 'levelUp' | 'xpGain';
+  xpAmount?: number;
+  message?: string;
 }
 
 type TasksScreenNavigationProp = StackNavigationProp<RootStackParamList>;
@@ -92,6 +110,10 @@ const TasksScreen = () => {
   const [loading, setLoading] = useState(true);
   const [achievementNotification, setAchievementNotification] = useState<AchievementNotification | null>(null);
   const [fadeAnim] = useState(new Animated.Value(0));
+  const [floatingXPs, setFloatingXPs] = useState<FloatingXPData[]>([]);
+  const [feedbackData, setFeedbackData] = useState<FeedbackData>({ visible: false, type: 'taskComplete' });
+  
+  const soundService = SoundService.getInstance();
 
   const storageService = StorageService.getInstance();
   const gameEngine = GameEngine.getInstance();
@@ -193,26 +215,58 @@ const TasksScreen = () => {
     }, 3000);
   };
 
+  // Show floating XP
+  const showFloatingXP = (xp: number, x: number, y: number) => {
+    const newFloatingXP: FloatingXPData = {
+      id: Date.now().toString(),
+      xp,
+      startX: x,
+      startY: y,
+      visible: true
+    };
+    
+    setFloatingXPs(prev => [...prev, newFloatingXP]);
+    
+    // Remove after animation completes
+    setTimeout(() => {
+      setFloatingXPs(prev => prev.filter(item => item.id !== newFloatingXP.id));
+    }, 2000);
+  };
+  
+  // Show dopaminergic feedback
+  const showFeedback = (type: 'taskComplete' | 'levelUp' | 'xpGain', xpAmount?: number, message?: string) => {
+    setFeedbackData({ visible: true, type, xpAmount, message });
+    
+    setTimeout(() => {
+      setFeedbackData(prev => ({ ...prev, visible: false }));
+    }, type === 'levelUp' ? 2500 : 1500);
+  };
+
   // Handle task completion
   const handleCompleteTask = async (taskId: string) => {
     try {
+      // Play sound immediately for instant feedback
+      await soundService.playTaskComplete();
+      
       const result = await gameEngine.completeTask(taskId);
       
-      // Show success message with XP and gold gained
-      let message = `🎉 Task completed!\n+${result.xpGained} XP`;
-      if (result.goldGained > 0) {
-        message += `, +${result.goldGained} Gold`;
-      }
+      // Show floating XP (center screen approximation)
+      const screenWidth = Dimensions.get('window').width;
+      const screenHeight = Dimensions.get('window').height;
+      showFloatingXP(result.xpGained, screenWidth / 2, screenHeight / 2);
       
+      // Show dopaminergic feedback
       if (result.levelUp && result.newLevel) {
-        message += `\n🆙 Level up! You are now level ${result.newLevel}!`;
+        await soundService.playLevelUp();
+        showFeedback('levelUp', result.xpGained, `You are now level ${result.newLevel}!`);
+      } else {
+        showFeedback('taskComplete', result.xpGained);
       }
-      
-      Alert.alert('Success!', message);
       
       // Show achievement notifications
       result.achievementsUnlocked.forEach((achievement, index) => {
         setTimeout(() => {
+          soundService.playAchievement();
           showAchievementNotification(achievement);
         }, index * 1000);
       });
@@ -221,6 +275,7 @@ const TasksScreen = () => {
       await loadTasks();
     } catch (error) {
       console.error('Error completing task:', error);
+      await soundService.playError();
       Alert.alert('Error', 'Failed to complete task');
     }
   };
@@ -237,6 +292,7 @@ const TasksScreen = () => {
           style: 'destructive',
           onPress: async () => {
             try {
+              await soundService.playError();
               const result = await gameEngine.failTask(taskId);
               
               let message = '❌ Task failed.';
@@ -333,11 +389,12 @@ const TasksScreen = () => {
 
   // Render task item
   const renderTaskItem = ({ item }: { item: Task }) => (
-    <TaskCard
+    <AnimatedTaskCard
       task={item}
       onComplete={handleCompleteTask}
       onFail={handleFailTask}
       onPress={handleTaskPress}
+      onAnimationComplete={() => {}} // Animation complete callback
     />
   );
 
@@ -459,6 +516,29 @@ const TasksScreen = () => {
           </View>
         </Animated.View>
       )}
+      
+      {/* Dopaminergic Feedback */}
+      <AnimatedFeedback
+        visible={feedbackData.visible}
+        type={feedbackData.type}
+        onComplete={() => setFeedbackData(prev => ({ ...prev, visible: false }))}
+        xpAmount={feedbackData.xpAmount}
+        message={feedbackData.message}
+      />
+      
+      {/* Floating XP Numbers */}
+      {floatingXPs.map((floatingXP) => (
+        <FloatingXP
+          key={floatingXP.id}
+          xp={floatingXP.xp}
+          startX={floatingXP.startX}
+          startY={floatingXP.startY}
+          visible={floatingXP.visible}
+          onComplete={() => {
+            setFloatingXPs(prev => prev.filter(item => item.id !== floatingXP.id));
+          }}
+        />
+      ))}
     </View>
   );
 };
@@ -496,21 +576,24 @@ const styles = StyleSheet.create({
   },
   filterButton: {
     minWidth: 80,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderRadius: 8,
+    paddingVertical: Spacing.xs, // Reduzido de Spacing.sm para Spacing.xs
+    paddingHorizontal: Spacing.sm, // Reduzido de Spacing.md para Spacing.sm
+    borderRadius: 6, // Reduzido de 8 para 6
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
     alignItems: 'center',
+    justifyContent: 'center',
+    height: 36, // Altura fixa menor
   },
   filterButtonActive: {
     backgroundColor: Colors.primary,
   },
   filterText: {
-    fontSize: FontSizes.sm,
+    fontSize: FontSizes.xs, // Reduzido de FontSizes.sm para FontSizes.xs
     color: Colors.textSecondary,
     fontWeight: '500',
+    textAlign: 'center',
   },
   filterTextActive: {
     color: Colors.text,

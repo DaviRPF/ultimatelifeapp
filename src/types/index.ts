@@ -7,6 +7,7 @@ export interface Hero {
   createdAt: string;
   name: string;
   weight?: number; // Current weight in kg
+  bodyMeasurements?: BodyMeasurements; // Current body measurements
 }
 
 export interface WeightEntry {
@@ -14,6 +15,73 @@ export interface WeightEntry {
   weight: number; // in kg
   date: string; // ISO date
   notes?: string;
+}
+
+export interface BodyMeasurements {
+  // Membros superiores (em cm)
+  bracoRelaxado?: number;        // na maior circunferência do braço, com o membro solto
+  bracoContraido?: number;       // na maior circunferência do braço, flexionando o bíceps
+  antebraco?: number;            // na maior circunferência, próximo ao cotovelo
+  
+  // Tronco (em cm)
+  peitoral?: number;             // linha dos mamilos, no final da expiração
+  abdomen?: number;              // cintura, na menor circunferência (altura do umbigo)
+  gluteo?: number;               // quadril, na maior circunferência dos glúteos
+  deltoides?: number;            // ombros, ao redor da maior circunferência
+  
+  // Membros inferiores (em cm)
+  perna?: number;                // coxa, na maior circunferência (terço superior)
+  panturrilha?: number;          // na maior circunferência da "batata da perna"
+}
+
+export interface BodyMeasurementEntry {
+  id: string;
+  measurements: BodyMeasurements;
+  date: string; // ISO date
+  notes?: string;
+}
+
+// Workout System
+export interface Exercise {
+  id: string;
+  name: string;
+  category: 'chest' | 'back' | 'shoulders' | 'arms' | 'legs' | 'core' | 'cardio';
+  muscleGroups: string[]; // Primary muscle groups
+  equipment?: string;
+  instructions?: string;
+}
+
+export type SetType = 'normal' | 'warmup' | 'failure';
+
+export interface WorkoutSet {
+  id: string;
+  reps: number;
+  weight?: number; // in kg
+  type: SetType;
+  restTime?: number; // in seconds
+  notes?: string;
+}
+
+export interface WorkoutExercise {
+  id: string;
+  exerciseId: string;
+  exerciseName: string; // Cached for display
+  sets: WorkoutSet[];
+  notes?: string;
+}
+
+export type WorkoutType = 'strength' | 'cardio';
+
+export interface Workout {
+  id: string;
+  name: string;
+  type: WorkoutType;
+  date: string; // ISO date
+  startTime?: string; // ISO date time
+  endTime?: string; // ISO date time
+  exercises: WorkoutExercise[];
+  notes?: string;
+  totalDuration?: number; // in minutes
 }
 
 export interface CustomRepetition {
@@ -169,6 +237,8 @@ export interface AppData {
   rewards: Reward[];
   achievements: Achievements;
   weightEntries: WeightEntry[];
+  bodyMeasurementEntries: BodyMeasurementEntry[];
+  workouts: Workout[];
 }
 
 // Attribute descriptions for sliders
@@ -187,6 +257,9 @@ export type RootStackParamList = {
   CreateAchievement: undefined;
   CreateQuest: undefined;
   TaskDetails: { taskId: string };
+  BodyMeasurements: undefined;
+  CreateWorkout: undefined;
+  WorkoutHistory: undefined;
 };
 
 export type MainTabParamList = {

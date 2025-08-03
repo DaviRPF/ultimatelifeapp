@@ -19,6 +19,9 @@ import CreateRewardScreen from '../screens/Rewards/CreateRewardScreen';
 import AchievementsScreen from '../screens/Achievements/AchievementsScreen';
 import CreateAchievementScreen from '../screens/Achievements/CreateAchievementScreen';
 import FitnessScreen from '../screens/Fitness/FitnessScreen';
+import BodyMeasurementsScreen from '../screens/Fitness/BodyMeasurementsScreen';
+import CreateWorkoutScreen from '../screens/Fitness/CreateWorkoutScreen';
+import WorkoutHistoryScreen from '../screens/Fitness/WorkoutHistoryScreen';
 import SettingsScreen from '../screens/Settings/SettingsScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -170,6 +173,28 @@ const AppNavigator = () => {
           options={{ 
             title: 'Create Achievement',
             presentation: 'modal'
+          }}
+        />
+        <Stack.Screen 
+          name="BodyMeasurements" 
+          component={BodyMeasurementsScreen}
+          options={{ 
+            title: 'Body Measurements'
+          }}
+        />
+        <Stack.Screen 
+          name="CreateWorkout" 
+          component={CreateWorkoutScreen}
+          options={{ 
+            title: 'Create Workout',
+            presentation: 'modal'
+          }}
+        />
+        <Stack.Screen 
+          name="WorkoutHistory" 
+          component={WorkoutHistoryScreen}
+          options={{ 
+            title: 'Workout History'
           }}
         />
       </Stack.Navigator>
