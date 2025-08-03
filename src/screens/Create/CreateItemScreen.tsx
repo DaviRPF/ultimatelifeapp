@@ -11,6 +11,7 @@ import {
   Modal,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import Slider from '@react-native-community/slider';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSizes, Spacing } from '../../constants/theme';
@@ -19,7 +20,7 @@ import AttributeSlider from '../../components/AttributeSlider';
 import TaskEvaluationQuestionnaire, { QuestionnaireResult } from '../../components/TaskEvaluationQuestionnaire';
 import GameEngine from '../../services/GameEngine';
 import StorageService from '../../services/StorageService';
-import { RootStackParamList, Task, Quest, Group, RepetitionType, WeeklyRepetition } from '../../types';
+import { RootStackParamList, Task, Quest, Group, RepetitionType, WeeklyRepetition, TaskType, NumericTaskConfig } from '../../types';
 
 type CreateItemScreenNavigationProp = StackNavigationProp<RootStackParamList, 'CreateTask'>;
 
@@ -41,9 +42,9 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
   const [difficulty, setDifficulty] = useState(50);
   const [importance, setImportance] = useState(50);
   const [fear, setFear] = useState(50);
+  const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState('');
-  const [characteristics, setCharacteristics] = useState<string[]>([]);
-  const [characteristicInput, setCharacteristicInput] = useState('');
+  const [skillImpacts, setSkillImpacts] = useState<{ [key: string]: number }>({});
   const [selectedGroup, setSelectedGroup] = useState<string>('');
   const [groups, setGroups] = useState<Group[]>([]);
   
@@ -72,12 +73,19 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
   const [autoFail, setAutoFail] = useState(false);
   const [habitEnabled, setHabitEnabled] = useState(false);
   const [habitDays, setHabitDays] = useState(7);
+  const [infiniteTask, setInfiniteTask] = useState(false);
+  
+  // Numeric task settings
+  const [taskType, setTaskType] = useState<TaskType>('binary');
+  const [numericUnit, setNumericUnit] = useState('');
+  const [minimumTarget, setMinimumTarget] = useState('');
+  const [dailyTarget, setDailyTarget] = useState('');
   
   const [isLoading, setIsLoading] = useState(false);
   
   // Existing skills and characteristics
-  const [availableCharacteristics, setAvailableCharacteristics] = useState<string[]>([]);
-  const [showExistingCharacteristics, setShowExistingCharacteristics] = useState(false);
+  const [availableSkills, setAvailableSkills] = useState<string[]>([]);
+  const [showExistingSkills, setShowExistingSkills] = useState(false);
   const [showGroupModal, setShowGroupModal] = useState(false);
   
   // Questionnaire states
@@ -108,9 +116,9 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
   const loadExistingData = async () => {
     try {
       await storageService.initializeAppData();
-      const characteristics = storageService.getCharacteristics();
+      const skills = storageService.getSkills();
       
-      setAvailableCharacteristics(Object.keys(characteristics));
+      setAvailableSkills(Object.keys(skills));
     } catch (error) {
       console.error('Error loading existing data:', error);
     }
@@ -127,29 +135,42 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
 
   // Common functions
 
-  const addCharacteristic = () => {
-    if (characteristicInput.trim() && !characteristics.includes(characteristicInput.trim())) {
-      setCharacteristics([...characteristics, characteristicInput.trim()]);
-      setCharacteristicInput('');
+  const addSkill = () => {
+    if (skillInput.trim() && !skills.includes(skillInput.trim())) {
+      const newSkill = skillInput.trim();
+      setSkills([...skills, newSkill]);
+      setSkillImpacts({ ...skillImpacts, [newSkill]: 100 }); // Default 100% impact
+      setSkillInput('');
     }
   };
 
-  const removeCharacteristic = (charToRemove: string) => {
-    setCharacteristics(characteristics.filter(char => char !== charToRemove));
+  const removeSkill = (skillToRemove: string) => {
+    setSkills(skills.filter(skill => skill !== skillToRemove));
+    const newImpacts = { ...skillImpacts };
+    delete newImpacts[skillToRemove];
+    setSkillImpacts(newImpacts);
   };
 
 
-  const toggleExistingCharacteristic = (charName: string) => {
-    if (characteristics.includes(charName)) {
-      setCharacteristics(characteristics.filter(char => char !== charName));
+  const toggleExistingSkill = (skillName: string) => {
+    if (skills.includes(skillName)) {
+      setSkills(skills.filter(skill => skill !== skillName));
+      const newImpacts = { ...skillImpacts };
+      delete newImpacts[skillName];
+      setSkillImpacts(newImpacts);
     } else {
-      setCharacteristics([...characteristics, charName]);
+      setSkills([...skills, skillName]);
+      setSkillImpacts({ ...skillImpacts, [skillName]: 100 }); // Default 100% impact
     }
   };
 
+  const updateSkillImpact = (skillName: string, impact: number) => {
+    setSkillImpacts({ ...skillImpacts, [skillName]: impact });
+  };
 
-  const getAvailableCharacteristicsFiltered = () => {
-    return availableCharacteristics.filter(charName => !characteristics.includes(charName));
+
+  const getAvailableSkillsFiltered = () => {
+    return availableSkills.filter(skillName => !skills.includes(skillName));
   };
 
 
@@ -184,8 +205,8 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
     }
 
     if (itemType === 'task') {
-      if (characteristics.length === 0) {
-        Alert.alert('Error', 'At least one characteristic is required');
+      if (skills.length === 0) {
+        Alert.alert('Error', 'At least one skill is required');
         return false;
       }
       
@@ -197,6 +218,24 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
       if (difficulty < 10 || importance < 10 || fear < 10) {
         Alert.alert('Error', 'All attributes must be at least 10%');
         return false;
+      }
+      
+      if (taskType === 'numeric') {
+        if (!numericUnit.trim()) {
+          Alert.alert('Error', 'Unit is required for numeric tasks');
+          return false;
+        }
+        
+        const minTarget = parseFloat(minimumTarget);
+        if (isNaN(minTarget) || minTarget <= 0) {
+          Alert.alert('Error', 'Minimum target must be a positive number');
+          return false;
+        }
+        
+        if (dailyTarget && !isNaN(parseFloat(dailyTarget)) && parseFloat(dailyTarget) < minTarget) {
+          Alert.alert('Error', 'Daily target cannot be less than minimum target');
+          return false;
+        }
       }
     }
 
@@ -236,13 +275,20 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const createTask = async () => {
+    const numericConfig: NumericTaskConfig | undefined = taskType === 'numeric' ? {
+      unit: numericUnit.trim(),
+      minimumTarget: parseFloat(minimumTarget),
+      dailyTarget: dailyTarget ? parseFloat(dailyTarget) : undefined,
+    } : undefined;
+
     const taskData: Omit<Task, 'id' | 'xp' | 'createdAt' | 'completed' | 'failed' | 'completedAt'> = {
       title: title.trim(),
       description: description.trim(),
       difficulty,
       importance,
       fear,
-      characteristics,
+      skills,
+      skillImpacts,
       dueDate: hasDueDate ? dueDate.toISOString().split('T')[0] : '',
       dueTime: hasDueDate ? dueDate.toTimeString().split(' ')[0] : '',
       repetition,
@@ -263,6 +309,11 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
         currentStreak: 0,
         lastCompletedDate: '',
       },
+      infinite: infiniteTask,
+      taskType,
+      numericConfig,
+      currentDayValue: taskType === 'numeric' ? 0 : undefined,
+      pendingValue: taskType === 'numeric' ? 0 : undefined,
     };
 
     await gameEngine.createTask(taskData);
@@ -285,7 +336,7 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
       createdAt: new Date().toISOString(),
       dueDate: hasDueDate && dueDate ? dueDate.toISOString() : undefined,
       notes: [],
-      characteristics,
+      skills,
     };
 
     await storageService.addQuest(questData);
@@ -422,6 +473,104 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
         />
       </View>
 
+      {/* Task Type (Task only) */}
+      {itemType === 'task' && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Task Type</Text>
+          <Text style={styles.sectionSubtitle}>
+            Choose how you want to track progress for this task
+          </Text>
+          
+          <View style={styles.taskTypeContainer}>
+            <TouchableOpacity
+              style={[styles.taskTypeButton, taskType === 'binary' && styles.taskTypeButtonActive]}
+              onPress={() => setTaskType('binary')}
+            >
+              <View style={styles.taskTypeHeader}>
+                <Ionicons name="checkbox" size={24} color={taskType === 'binary' ? Colors.background : Colors.primary} />
+                <Text style={[styles.taskTypeText, taskType === 'binary' && styles.taskTypeTextActive]}>Binária</Text>
+              </View>
+              <Text style={[styles.taskTypeDescription, taskType === 'binary' && styles.taskTypeDescriptionActive]}>
+                Tarefa tradicional: Concluir ou Falhar
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.taskTypeButton, taskType === 'numeric' && styles.taskTypeButtonActive]}
+              onPress={() => setTaskType('numeric')}
+            >
+              <View style={styles.taskTypeHeader}>
+                <Ionicons name="stats-chart" size={24} color={taskType === 'numeric' ? Colors.background : Colors.primary} />
+                <Text style={[styles.taskTypeText, taskType === 'numeric' && styles.taskTypeTextActive]}>Numérica</Text>
+              </View>
+              <Text style={[styles.taskTypeDescription, taskType === 'numeric' && styles.taskTypeDescriptionActive]}>
+                Registro de valores quantitativos (ex: 500ml de água)
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Numeric Configuration */}
+          {taskType === 'numeric' && (
+            <View style={styles.numericConfig}>
+              <Text style={styles.numericConfigTitle}>📊 Configuração Numérica</Text>
+              
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Unidade de Medida *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ex: ml, páginas, minutos, km"
+                  placeholderTextColor={Colors.textSecondary}
+                  value={numericUnit}
+                  onChangeText={setNumericUnit}
+                />
+              </View>
+
+              <View style={styles.numericInputRow}>
+                <View style={[styles.inputGroup, styles.numericInputHalf]}>
+                  <Text style={styles.label}>Meta Mínima *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="100"
+                    placeholderTextColor={Colors.textSecondary}
+                    value={minimumTarget}
+                    onChangeText={setMinimumTarget}
+                    keyboardType="decimal-pad"
+                  />
+                  <Text style={styles.inputHelp}>Valor mínimo para considerar sucesso</Text>
+                </View>
+
+                <View style={[styles.inputGroup, styles.numericInputHalf]}>
+                  <Text style={styles.label}>Meta Diária (Opcional)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="150"
+                    placeholderTextColor={Colors.textSecondary}
+                    value={dailyTarget}
+                    onChangeText={setDailyTarget}
+                    keyboardType="decimal-pad"
+                  />
+                  <Text style={styles.inputHelp}>Meta ideal para o dia</Text>
+                </View>
+              </View>
+
+              <View style={styles.numericExampleBox}>
+                <Text style={styles.numericExampleTitle}>💡 Exemplo:</Text>
+                <Text style={styles.numericExampleText}>
+                  {numericUnit && minimumTarget ? 
+                    `• Você precisa registrar pelo menos ${minimumTarget} ${numericUnit} para considerar sucesso\n` +
+                    (dailyTarget ? `• Meta ideal: ${dailyTarget} ${numericUnit} por dia\n` : '') +
+                    `• Pode inserir valores durante o dia e enviar manualmente\n` +
+                    `• Ou deixar valores pendentes para envio automático à meia-noite`
+                    :
+                    'Configure a unidade e meta mínima para ver o exemplo'
+                  }
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Quest Priority (Quest only) */}
       {itemType === 'quest' && (
         <View style={styles.section}>
@@ -440,7 +589,7 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
                   styles.priorityText,
                   priority === priorityOption && styles.selectedPriorityText
                 ]}>
-                  {priorityOption.toUpperCase()}
+                  {priorityOption ? priorityOption.toUpperCase() : ''}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -591,38 +740,38 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
       )}
 
 
-      {/* Characteristics */}
+      {/* Skills */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Characteristics {itemType === 'task' ? '*' : ''}</Text>
+          <Text style={styles.sectionTitle}>Skills {itemType === 'task' ? '*' : ''}</Text>
           <TouchableOpacity
             style={styles.toggleButton}
-            onPress={() => setShowExistingCharacteristics(!showExistingCharacteristics)}
+            onPress={() => setShowExistingSkills(!showExistingSkills)}
           >
             <Text style={styles.toggleButtonText}>
-              {showExistingCharacteristics ? 'Create New' : 'Use Existing'}
+              {showExistingSkills ? 'Create New' : 'Use Existing'}
             </Text>
           </TouchableOpacity>
         </View>
 
-        {showExistingCharacteristics ? (
+        {showExistingSkills ? (
           <View style={styles.existingSection}>
-            <Text style={styles.sectionSubtitle}>Select from existing characteristics:</Text>
-            {getAvailableCharacteristicsFiltered().length === 0 ? (
+            <Text style={styles.sectionSubtitle}>Select from existing skills:</Text>
+            {getAvailableSkillsFiltered().length === 0 ? (
               <Text style={styles.noItemsText}>
-                {availableCharacteristics.length === 0 
-                  ? 'No characteristics available. Create characteristics first in the Skills tab.' 
-                  : 'All available characteristics already selected.'}
+                {availableSkills.length === 0 
+                  ? 'No skills available. Create skills first in the Skills tab.' 
+                  : 'All available skills already selected.'}
               </Text>
             ) : (
               <View style={styles.existingItemsGrid}>
-                {getAvailableCharacteristicsFiltered().map((charName) => (
+                {getAvailableSkillsFiltered().map((skillName) => (
                   <TouchableOpacity
-                    key={charName}
+                    key={skillName}
                     style={styles.existingItem}
-                    onPress={() => toggleExistingCharacteristic(charName)}
+                    onPress={() => toggleExistingSkill(skillName)}
                   >
-                    <Text style={styles.existingItemText}>{charName}</Text>
+                    <Text style={styles.existingItemText}>{skillName}</Text>
                     <Ionicons name="add-circle" size={16} color={Colors.primary} />
                   </TouchableOpacity>
                 ))}
@@ -633,27 +782,49 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.inputRow}>
             <TextInput
               style={[styles.input, styles.skillInput]}
-              placeholder="Add characteristic"
+              placeholder="Add skill"
               placeholderTextColor={Colors.textSecondary}
-              value={characteristicInput}
-              onChangeText={setCharacteristicInput}
-              onSubmitEditing={addCharacteristic}
+              value={skillInput}
+              onChangeText={setSkillInput}
+              onSubmitEditing={addSkill}
             />
-            <TouchableOpacity style={styles.addButton} onPress={addCharacteristic}>
+            <TouchableOpacity style={styles.addButton} onPress={addSkill}>
               <Text style={styles.addButtonText}>+</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {characteristics.map((char, index) => (
-          <View key={index} style={styles.characteristicItem}>
-            <Text style={styles.characteristicText}>{char}</Text>
-            <TouchableOpacity
-              style={styles.removeButton}
-              onPress={() => removeCharacteristic(char)}
-            >
-              <Text style={styles.removeButtonText}>×</Text>
-            </TouchableOpacity>
+        {skills.map((skill, index) => (
+          <View key={index} style={styles.skillItemWithImpact}>
+            <View style={styles.skillHeader}>
+              <Text style={styles.skillText}>{skill}</Text>
+              <TouchableOpacity
+                style={styles.removeButton}
+                onPress={() => removeSkill(skill)}
+              >
+                <Text style={styles.removeButtonText}>×</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.impactSliderContainer}>
+              <Text style={styles.impactLabel}>
+                Impacto: {skillImpacts[skill] || 100}%
+              </Text>
+              <Slider
+                style={styles.impactSlider}
+                minimumValue={0}
+                maximumValue={100}
+                value={skillImpacts[skill] || 100}
+                onValueChange={(value) => updateSkillImpact(skill, Math.round(value))}
+                minimumTrackTintColor={Colors.primary}
+                maximumTrackTintColor={Colors.surface}
+                thumbStyle={{ backgroundColor: Colors.primary, width: 20, height: 20 }}
+                trackStyle={{ height: 4, borderRadius: 2 }}
+                step={5}
+              />
+              <Text style={styles.impactDescription}>
+                Define quanto do XP da tarefa será aplicado a esta skill
+              </Text>
+            </View>
           </View>
         ))}
       </View>
@@ -875,6 +1046,27 @@ const CreateItemScreen: React.FC<Props> = ({ navigation }) => {
               />
             </View>
           )}
+        </View>
+      )}
+
+      {/* Infinite Task Option (Task only) */}
+      {itemType === 'task' && (
+        <View style={styles.section}>
+          <View style={styles.switchRow}>
+            <Text style={styles.sectionTitle}>Infinite Task</Text>
+            <Switch
+              value={infiniteTask}
+              onValueChange={setInfiniteTask}
+              trackColor={{ false: Colors.surfaceDark, true: Colors.warning }}
+              thumbColor={Colors.text}
+            />
+          </View>
+          <Text style={styles.sectionSubtitle}>
+            {infiniteTask 
+              ? '♾️ This task can be completed multiple times and will reset after each completion'
+              : 'Normal task - can only be completed once'
+            }
+          </Text>
         </View>
       )}
 
@@ -1594,6 +1786,137 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: Colors.primary,
     fontWeight: '600',
+  },
+  // Impact slider styles
+  skillItemWithImpact: {
+    backgroundColor: Colors.surface,
+    borderRadius: 8,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  skillHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  skillText: {
+    fontSize: FontSizes.md,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  impactSliderContainer: {
+    marginTop: Spacing.sm,
+  },
+  impactLabel: {
+    fontSize: FontSizes.sm,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: Spacing.sm,
+  },
+  impactSlider: {
+    width: '100%',
+    height: 40,
+    marginBottom: Spacing.xs,
+  },
+  impactDescription: {
+    fontSize: FontSizes.xs,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+    lineHeight: 14,
+  },
+  // Task Type Styles
+  taskTypeContainer: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  taskTypeButton: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: Spacing.md,
+    borderWidth: 2,
+    borderColor: Colors.border,
+  },
+  taskTypeButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  taskTypeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  taskTypeText: {
+    fontSize: FontSizes.lg,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  taskTypeTextActive: {
+    color: Colors.background,
+  },
+  taskTypeDescription: {
+    fontSize: FontSizes.sm,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  taskTypeDescriptionActive: {
+    color: Colors.background + 'CC',
+  },
+  // Numeric Configuration Styles
+  numericConfig: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: Spacing.lg,
+    marginTop: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+  },
+  numericConfigTitle: {
+    fontSize: FontSizes.md,
+    fontWeight: 'bold',
+    color: Colors.primary,
+    marginBottom: Spacing.md,
+    textAlign: 'center',
+  },
+  numericInputRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  numericInputHalf: {
+    flex: 1,
+  },
+  inputHelp: {
+    fontSize: FontSizes.xs,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+    marginTop: Spacing.xs,
+    lineHeight: 14,
+  },
+  numericExampleBox: {
+    backgroundColor: Colors.primary + '15',
+    borderRadius: 8,
+    padding: Spacing.md,
+    marginTop: Spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.primary,
+  },
+  numericExampleTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: 'bold',
+    color: Colors.primary,
+    marginBottom: Spacing.sm,
+  },
+  numericExampleText: {
+    fontSize: FontSizes.sm,
+    color: Colors.text,
+    lineHeight: 18,
   },
 });
 

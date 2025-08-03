@@ -67,9 +67,9 @@ const FloatingXP: React.FC<FloatingXPProps> = ({
       style={[
         styles.container,
         {
-          left: startX - 30, // Center the text
           top: startY - 20,
           transform: [
+            { translateX: startX - 30 }, // Center the text
             { translateY },
             { scale },
           ],

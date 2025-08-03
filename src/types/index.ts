@@ -108,6 +108,35 @@ export interface HabitData {
   lastCompletedDate: string;
 }
 
+export type TaskType = 'binary' | 'numeric';
+
+export interface NumericTaskConfig {
+  unit: string; // e.g., 'ml', 'páginas', 'minutos'
+  minimumTarget: number; // valor mínimo para considerar sucesso
+  dailyTarget?: number; // meta diária opcional
+}
+
+export interface NumericTaskEntry {
+  id: string;
+  taskId: string;
+  value: number;
+  date: string; // ISO date (YYYY-MM-DD)
+  timestamp: string; // ISO datetime when value was entered
+  autoSubmitted: boolean; // true if submitted automatically at end of day
+}
+
+export type TaskExecutionStatus = 'completed' | 'failed' | 'skipped';
+
+export interface BinaryTaskEntry {
+  id: string;
+  taskId: string;
+  status: TaskExecutionStatus;
+  date: string; // ISO date (YYYY-MM-DD)
+  timestamp: string; // ISO datetime when action was taken
+  xpGained?: number; // XP gained from completion (0 for failed/skipped)
+  goldGained?: number; // Gold gained from completion (0 for failed/skipped)
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -116,7 +145,8 @@ export interface Task {
   importance: number; // 10-100, never 0  
   fear: number; // 10-100, never 0
   xp: number; // calculated by proprietary algorithm
-  characteristics: string[]; // characteristics that will gain XP
+  skills: string[]; // skills that will gain XP
+  skillImpacts?: { [key: string]: number }; // impact percentage (0-100) for each skill
   dueDate?: string; // optional
   dueTime?: string; // specific time optional
   repetition: RepetitionType;
@@ -131,6 +161,15 @@ export interface Task {
   notificationIntervals: number[]; // multiple reminders
   autoFail: boolean;
   habit: HabitData;
+  infinite: boolean; // can be completed multiple times
+  completionCount?: number; // for infinite tasks
+  lastCompletedAt?: string; // for infinite tasks
+  
+  // Numeric task properties
+  taskType: TaskType; // 'binary' or 'numeric'
+  numericConfig?: NumericTaskConfig; // only for numeric tasks
+  currentDayValue?: number; // current accumulated value for today (numeric tasks)
+  pendingValue?: number; // value entered but not yet submitted (numeric tasks)
 }
 
 export interface Quest {
@@ -150,20 +189,21 @@ export interface Quest {
   completedAt?: string;
   dueDate?: string;
   notes: string[];
-  characteristics: string[]; // Associated characteristics
+  skills: string[]; // Associated skills
+}
+
+export interface Characteristic {
+  level: number;
+  xp: number;
+  type: 'increasing' | 'decreasing';
+  skills: string[]; // associated specific skills
 }
 
 export interface Skill {
   level: number;
   xp: number;
   type: 'increasing' | 'decreasing';
-  characteristics: string[]; // mandatory at least 1
-}
-
-export interface Characteristic {
-  level: number;
-  xp: number;
-  associatedSkills: string[];
+  characteristic?: string; // belongs to one characteristic
 }
 
 export interface Group {
@@ -239,6 +279,8 @@ export interface AppData {
   weightEntries: WeightEntry[];
   bodyMeasurementEntries: BodyMeasurementEntry[];
   workouts: Workout[];
+  numericTaskEntries: NumericTaskEntry[]; // histórico de valores de tasks numéricas
+  binaryTaskEntries: BinaryTaskEntry[]; // histórico de execuções de tasks binárias
 }
 
 // Attribute descriptions for sliders
@@ -251,11 +293,11 @@ export interface AttributeDescription {
 // Navigation types
 export type RootStackParamList = {
   MainTabs: undefined;
-  CreateTask: undefined;
+  // CreateTask: undefined; // REMOVIDO - usando CreateItem
   EditTask: { taskId: string };
   CreateReward: undefined;
   CreateAchievement: undefined;
-  CreateQuest: undefined;
+  // CreateQuest: undefined; // REMOVIDO - usando CreateItem
   TaskDetails: { taskId: string };
   BodyMeasurements: undefined;
   CreateWorkout: undefined;

@@ -214,8 +214,8 @@ const Confetti: React.FC = () => {
           style={[
             styles.confettiPiece,
             {
-              left: confetti.x,
               transform: [
+                { translateX: confetti.x },
                 { translateY: confetti.y },
                 {
                   rotate: confetti.rotation.interpolate({

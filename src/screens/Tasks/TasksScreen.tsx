@@ -15,7 +15,7 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
-import { Task, RootStackParamList, RepetitionType } from '../../types';
+import { Task, RootStackParamList, RepetitionType, NumericTaskEntry } from '../../types';
 import StorageService from '../../services/StorageService';
 import GameEngine from '../../services/GameEngine';
 import AnimatedTaskCard from '../../components/AnimatedTaskCard';
@@ -51,7 +51,8 @@ type TasksScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
 // Helper function to check if a task should be done today
 const isTaskForToday = (task: Task): boolean => {
-  if (task.completed || task.failed) return false;
+  if (!task || task.completed || task.failed) return false;
+  if (!task.repetition) return false;
 
   const today = new Date();
   const dayOfWeek = today.getDay(); // 0=Sunday, 1=Monday, etc.
@@ -135,23 +136,32 @@ const TasksScreen = () => {
 
   // Filter tasks based on status
   const filterTasks = useCallback(() => {
-    let filtered = tasks;
+    // Filter out any invalid tasks first
+    const validTasks = tasks.filter(task => 
+      task && 
+      typeof task === 'object' && 
+      task.id && 
+      task.title &&
+      task.repetition
+    );
+    
+    let filtered = validTasks;
     
     switch (filter) {
       case 'today':
-        filtered = tasks.filter(task => isTaskForToday(task));
+        filtered = validTasks.filter(task => isTaskForToday(task));
         break;
       case 'active':
-        filtered = tasks.filter(task => !task.completed && !task.failed);
+        filtered = validTasks.filter(task => !task.completed && !task.failed);
         break;
       case 'completed':
-        filtered = tasks.filter(task => task.completed);
+        filtered = validTasks.filter(task => task.completed);
         break;
       case 'failed':
-        filtered = tasks.filter(task => task.failed);
+        filtered = validTasks.filter(task => task.failed);
         break;
       default:
-        filtered = tasks;
+        filtered = validTasks;
     }
     
     // Sort by priority: active tasks first, then by due date, then by creation date
@@ -317,6 +327,41 @@ const TasksScreen = () => {
     );
   };
 
+  // Handle numeric task value submission
+  const handleNumericSubmit = async (taskId: string, value: number) => {
+    try {
+      // Create numeric task entry
+      const entry: NumericTaskEntry = {
+        id: Date.now().toString(),
+        taskId,
+        value,
+        date: new Date().toISOString().split('T')[0],
+        timestamp: new Date().toISOString(),
+        autoSubmitted: false,
+      };
+
+      await storageService.addNumericTaskEntry(entry);
+
+      // Update task's current day value
+      const task = tasks.find(t => t.id === taskId);
+      if (task) {
+        const newCurrentValue = (task.currentDayValue || 0) + value;
+        await storageService.updateTaskCurrentDayValue(taskId, newCurrentValue);
+        await storageService.updateTaskPendingValue(taskId, 0); // Clear pending value
+      }
+
+      // Reload tasks to show updated values
+      await loadTasks();
+      
+      await soundService.playTaskComplete();
+      showFeedback('xpGain', undefined, `+${value} ${task?.numericConfig?.unit || ''} registrado!`);
+    } catch (error) {
+      console.error('Error submitting numeric value:', error);
+      await soundService.playError();
+      Alert.alert('Error', 'Failed to submit value');
+    }
+  };
+
   // Handle task press (navigate to details)
   const handleTaskPress = (task: Task) => {
     navigation.navigate('TaskDetails', { taskId: task.id });
@@ -343,17 +388,25 @@ const TasksScreen = () => {
 
   // Get task count for each filter
   const getTaskCount = (filterType: TaskStatus) => {
+    const validTasks = tasks.filter(task => 
+      task && 
+      typeof task === 'object' && 
+      task.id && 
+      task.title &&
+      task.repetition
+    );
+    
     switch (filterType) {
       case 'today':
-        return tasks.filter(task => isTaskForToday(task)).length;
+        return validTasks.filter(task => isTaskForToday(task)).length;
       case 'active':
-        return tasks.filter(task => !task.completed && !task.failed).length;
+        return validTasks.filter(task => !task.completed && !task.failed).length;
       case 'completed':
-        return tasks.filter(task => task.completed).length;
+        return validTasks.filter(task => task.completed).length;
       case 'failed':
-        return tasks.filter(task => task.failed).length;
+        return validTasks.filter(task => task.failed).length;
       default:
-        return tasks.length;
+        return validTasks.length;
     }
   };
 
@@ -394,6 +447,7 @@ const TasksScreen = () => {
       onComplete={handleCompleteTask}
       onFail={handleFailTask}
       onPress={handleTaskPress}
+      onNumericSubmit={handleNumericSubmit}
       onAnimationComplete={() => {}} // Animation complete callback
     />
   );

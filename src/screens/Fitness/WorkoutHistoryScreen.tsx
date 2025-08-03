@@ -13,6 +13,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSizes, Spacing } from '../../constants/theme';
 import StorageService from '../../services/StorageService';
 import { Workout, SetType } from '../../types';
+import MuscleGroupChart from '../../components/MuscleGroupChart';
+import WorkoutProgressChart from '../../components/WorkoutProgressChart';
 
 const WorkoutHistoryScreen = () => {
   const navigation = useNavigation();
@@ -290,6 +292,13 @@ const WorkoutHistoryScreen = () => {
         ) : (
           <>
             {renderWeeklyStats()}
+            
+            {/* Gráficos de análise */}
+            <MuscleGroupChart workouts={workouts} />
+            <WorkoutProgressChart workouts={workouts} chartType="volume" />
+            <WorkoutProgressChart workouts={workouts} chartType="frequency" />
+            <WorkoutProgressChart workouts={workouts} chartType="duration" />
+            
             <Text style={styles.historyTitle}>
               All Workouts ({workouts.length})
             </Text>

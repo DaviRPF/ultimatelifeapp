@@ -9,11 +9,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSizes, Spacing } from '../constants/theme';
+import XPCalculator from '../services/XPCalculator';
 
 export interface QuestionnaireResult {
   difficulty: number;
   importance: number;
   fear: number;
+  estimatedXP: number;
+  estimatedGold: number;
 }
 
 interface Props {
@@ -202,6 +205,10 @@ const questions: Question[] = [
 const TaskEvaluationQuestionnaire: React.FC<Props> = ({ onComplete, onCancel }) => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<{ [key: number]: number }>({});
+  const [showResults, setShowResults] = useState(false);
+  const [calculatedResult, setCalculatedResult] = useState<QuestionnaireResult | null>(null);
+  
+  const xpCalculator = XPCalculator.getInstance();
 
   const currentQuestion = questions[currentQuestionIndex];
   const totalQuestions = questions.length;
@@ -212,9 +219,10 @@ const TaskEvaluationQuestionnaire: React.FC<Props> = ({ onComplete, onCancel }) 
     setAnswers(newAnswers);
 
     if (isLastQuestion) {
-      // Calculate results
+      // Calculate results and show preview
       const result = calculateResults(newAnswers);
-      onComplete(result);
+      setCalculatedResult(result);
+      setShowResults(true);
     } else {
       // Move to next question
       setCurrentQuestionIndex(currentQuestionIndex + 1);
@@ -246,10 +254,19 @@ const TaskEvaluationQuestionnaire: React.FC<Props> = ({ onComplete, onCancel }) 
     const importancePercentage = Math.round((importanceTotal / 20) * 100);
     const fearPercentage = Math.round((fearTotal / 20) * 100);
 
+    const difficulty = Math.max(25, difficultyPercentage); // Minimum 25%
+    const importance = Math.max(25, importancePercentage);
+    const fear = Math.max(25, fearPercentage);
+
+    // Calculate estimated rewards
+    const { xp, gold } = xpCalculator.calculateTaskXP(difficulty, importance, fear);
+
     return {
-      difficulty: Math.max(25, difficultyPercentage), // Minimum 25%
-      importance: Math.max(25, importancePercentage),
-      fear: Math.max(25, fearPercentage),
+      difficulty,
+      importance,
+      fear,
+      estimatedXP: xp,
+      estimatedGold: gold,
     };
   };
 
@@ -276,7 +293,96 @@ const TaskEvaluationQuestionnaire: React.FC<Props> = ({ onComplete, onCancel }) 
     }
   };
 
-  const categoryInfo = getCategoryInfo(currentQuestion.category);
+  const handleConfirm = () => {
+    if (calculatedResult) {
+      onComplete(calculatedResult);
+    }
+  };
+
+  const handleBackToQuestions = () => {
+    setShowResults(false);
+    setCurrentQuestionIndex(totalQuestions - 1);
+  };
+
+  if (showResults && calculatedResult) {
+    return (
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.closeButton} onPress={onCancel}>
+            <Ionicons name="close" size={24} color={Colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.title}>Recompensas Estimadas</Text>
+          <View style={styles.placeholder} />
+        </View>
+
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Rewards Preview */}
+          <View style={styles.rewardsContainer}>
+            <View style={styles.rewardItem}>
+              <View style={styles.rewardIconContainer}>
+                <Ionicons name="flash" size={32} color={Colors.warning} />
+              </View>
+              <Text style={styles.rewardLabel}>XP Estimado</Text>
+              <Text style={styles.rewardValue}>{calculatedResult.estimatedXP}</Text>
+            </View>
+
+            <View style={styles.rewardItem}>
+              <View style={styles.rewardIconContainer}>
+                <Ionicons name="logo-bitcoin" size={32} color={Colors.gold} />
+              </View>
+              <Text style={styles.rewardLabel}>Ouro Estimado</Text>
+              <Text style={styles.rewardValue}>{calculatedResult.estimatedGold}</Text>
+            </View>
+          </View>
+
+          {/* Attributes Summary */}
+          <View style={styles.attributesSummary}>
+            <Text style={styles.summaryTitle}>Atributos Calculados</Text>
+            
+            <View style={styles.attributeRow}>
+              <View style={styles.attributeInfo}>
+                <Ionicons name="barbell" size={20} color={Colors.difficulty} />
+                <Text style={styles.attributeLabel}>Dificuldade</Text>
+              </View>
+              <Text style={styles.attributeValue}>{calculatedResult.difficulty}%</Text>
+            </View>
+
+            <View style={styles.attributeRow}>
+              <View style={styles.attributeInfo}>
+                <Ionicons name="star" size={20} color={Colors.importance} />
+                <Text style={styles.attributeLabel}>Importância</Text>
+              </View>
+              <Text style={styles.attributeValue}>{calculatedResult.importance}%</Text>
+            </View>
+
+            <View style={styles.attributeRow}>
+              <View style={styles.attributeInfo}>
+                <Ionicons name="warning" size={20} color={Colors.fear} />
+                <Text style={styles.attributeLabel}>Medo/Ansiedade</Text>
+              </View>
+              <Text style={styles.attributeValue}>{calculatedResult.fear}%</Text>
+            </View>
+          </View>
+        </ScrollView>
+
+        {/* Action Buttons */}
+        <View style={styles.resultsNavigation}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBackToQuestions}>
+            <Ionicons name="chevron-back" size={20} color={Colors.text} />
+            <Text style={styles.backButtonText}>Voltar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.confirmButton} onPress={handleConfirm}>
+            <Text style={styles.confirmButtonText}>Confirmar</Text>
+            <Ionicons name="checkmark" size={20} color={Colors.textLight} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  const categoryInfo = getCategoryInfo(currentQuestion?.category || 'difficulty');
 
   return (
     <View style={styles.container}>
@@ -516,6 +622,113 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  // Results screen styles
+  rewardsContainer: {
+    flexDirection: 'row',
+    gap: Spacing.lg,
+    marginBottom: Spacing.xl,
+  },
+  rewardItem: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    padding: Spacing.lg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  rewardIconContainer: {
+    backgroundColor: Colors.background,
+    borderRadius: 24,
+    width: 48,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  rewardLabel: {
+    fontSize: FontSizes.sm,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: Spacing.xs,
+  },
+  rewardValue: {
+    fontSize: FontSizes.xl,
+    fontWeight: 'bold',
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  attributesSummary: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  summaryTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: Spacing.md,
+    textAlign: 'center',
+  },
+  attributeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  attributeInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  attributeLabel: {
+    fontSize: FontSizes.md,
+    color: Colors.text,
+  },
+  attributeValue: {
+    fontSize: FontSizes.md,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  resultsNavigation: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: Spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  backButtonText: {
+    fontSize: FontSizes.sm,
+    color: Colors.text,
+    marginLeft: Spacing.xs,
+  },
+  confirmButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    borderRadius: 20,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+  },
+  confirmButtonText: {
+    fontSize: FontSizes.sm,
+    color: Colors.textLight,
+    fontWeight: 'bold',
+    marginRight: Spacing.xs,
   },
 });
 

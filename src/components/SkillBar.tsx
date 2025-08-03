@@ -42,7 +42,7 @@ const SkillBar: React.FC<SkillBarProps> = ({ skill, skillName, onPress }) => {
           <Text style={styles.skillIcon}>{getSkillTypeIcon()}</Text>
           <Text style={styles.skillName}>{skillName}</Text>
           <Text style={[styles.skillType, { color: getSkillTypeColor() }]}>
-            {skill.type.toUpperCase()}
+            {skill.type ? skill.type.toUpperCase() : 'UNKNOWN'}
           </Text>
         </View>
         <View style={styles.levelContainer}>
@@ -67,15 +67,13 @@ const SkillBar: React.FC<SkillBarProps> = ({ skill, skillName, onPress }) => {
         </Text>
       </View>
 
-      {skill.characteristics && skill.characteristics.length > 0 && (
+      {skill.characteristic && (
         <View style={styles.characteristicsContainer}>
-          <Text style={styles.characteristicsLabel}>Characteristics:</Text>
+          <Text style={styles.characteristicsLabel}>Characteristic:</Text>
           <View style={styles.characteristicsList}>
-            {skill.characteristics.map((char, index) => (
-              <View key={index} style={styles.characteristicTag}>
-                <Text style={styles.characteristicText}>{char}</Text>
-              </View>
-            ))}
+            <View style={styles.characteristicTag}>
+              <Text style={styles.characteristicText}>{skill.characteristic}</Text>
+            </View>
           </View>
         </View>
       )}

@@ -8,6 +8,7 @@ interface AnimatedTaskCardProps {
   onComplete?: (taskId: string) => void;
   onFail?: (taskId: string) => void;
   onPress?: (task: Task) => void;
+  onNumericSubmit?: (taskId: string, value: number) => void;
   onAnimationComplete?: () => void;
 }
 
@@ -16,6 +17,7 @@ const AnimatedTaskCard: React.FC<AnimatedTaskCardProps> = ({
   onComplete,
   onFail,
   onPress,
+  onNumericSubmit,
   onAnimationComplete
 }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -122,6 +124,7 @@ const AnimatedTaskCard: React.FC<AnimatedTaskCardProps> = ({
         onComplete={handleComplete}
         onFail={handleFail}
         onPress={onPress}
+        onNumericSubmit={onNumericSubmit}
       />
     </Animated.View>
   );

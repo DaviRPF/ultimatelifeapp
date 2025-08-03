@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppData, Hero, Task, Quest, Skill, Characteristic, Group, Reward, Achievements, BackupData, WeightEntry, BodyMeasurementEntry, BodyMeasurements, Workout } from '../types';
+import { AppData, Hero, Task, Quest, Skill, Characteristic, Group, Reward, Achievements, BackupData, WeightEntry, BodyMeasurementEntry, BodyMeasurements, Workout, NumericTaskEntry, BinaryTaskEntry } from '../types';
 import { DEFAULT_ACHIEVEMENTS } from '../constants/defaultAchievements';
 
 const STORAGE_KEYS = {
@@ -32,6 +32,8 @@ const INITIAL_APP_DATA: AppData = {
   weightEntries: [],
   bodyMeasurementEntries: [],
   workouts: [],
+  numericTaskEntries: [],
+  binaryTaskEntries: [],
 };
 
 class StorageService {
@@ -84,6 +86,8 @@ class StorageService {
     migrated.weightEntries = migrated.weightEntries || [];
     migrated.bodyMeasurementEntries = migrated.bodyMeasurementEntries || [];
     migrated.workouts = migrated.workouts || [];
+    migrated.numericTaskEntries = migrated.numericTaskEntries || [];
+    migrated.binaryTaskEntries = migrated.binaryTaskEntries || [];
     migrated.achievements = migrated.achievements || { default: [], custom: [] };
     migrated.skills = migrated.skills || {};
     migrated.characteristics = migrated.characteristics || {};
@@ -91,10 +95,101 @@ class StorageService {
     migrated.rewards = migrated.rewards || [];
     migrated.tasks = migrated.tasks || [];
     migrated.quests = migrated.quests || [];
+    
+    // Migrate tasks to have new taskType field
+    migrated.tasks = migrated.tasks.map((task: any) => ({
+      ...task,
+      taskType: task.taskType || 'binary',
+      numericConfig: task.numericConfig || undefined,
+      currentDayValue: task.currentDayValue || undefined,
+      pendingValue: task.pendingValue || undefined,
+      // Ensure all required fields exist
+      title: task.title || '',
+      description: task.description || '',
+      skills: Array.isArray(task.skills) ? task.skills : [],
+      group: task.group || '',
+      repetition: task.repetition || 'one_time',
+      habit: task.habit || {
+        enabled: false,
+        requiredDays: 7,
+        currentStreak: 0,
+        lastCompletedDate: '',
+      },
+      completed: Boolean(task.completed),
+      failed: Boolean(task.failed),
+      infinite: Boolean(task.infinite),
+      notificationEnabled: Boolean(task.notificationEnabled),
+      notificationIntervals: Array.isArray(task.notificationIntervals) ? task.notificationIntervals : [],
+      autoFail: Boolean(task.autoFail),
+      difficulty: typeof task.difficulty === 'number' ? task.difficulty : 50,
+      importance: typeof task.importance === 'number' ? task.importance : 50,
+      fear: typeof task.fear === 'number' ? task.fear : 50,
+      xp: typeof task.xp === 'number' ? task.xp : 0,
+      createdAt: task.createdAt || new Date().toISOString(),
+    }));
 
     // Ensure hero has all fields
     if (migrated.hero) {
       migrated.hero.bodyMeasurements = migrated.hero.bodyMeasurements || undefined;
+    }
+
+    // Migrate tasks from old characteristics structure to new skills structure
+    if (migrated.tasks) {
+      migrated.tasks = migrated.tasks.map((task: any) => {
+        if (task.characteristics && !task.skills) {
+          // Convert old characteristics to skills
+          return {
+            ...task,
+            skills: task.characteristics || [],
+            skillImpacts: task.characteristicImpacts || {},
+            // Remove old fields
+            characteristics: undefined,
+            characteristicImpacts: undefined,
+          };
+        }
+        // Ensure skills array exists
+        return {
+          ...task,
+          skills: task.skills || [],
+          skillImpacts: task.skillImpacts || {},
+        };
+      });
+    }
+
+    // Migrate quests from old characteristics structure to new skills structure  
+    if (migrated.quests) {
+      migrated.quests = migrated.quests.map((quest: any) => {
+        if (quest.characteristics && !quest.skills) {
+          // Convert old characteristics to skills
+          return {
+            ...quest,
+            skills: quest.characteristics || [],
+            // Remove old field
+            characteristics: undefined,
+          };
+        }
+        // Ensure skills array exists
+        return {
+          ...quest,
+          skills: quest.skills || [],
+        };
+      });
+    }
+
+    // Ensure skills have required properties
+    if (migrated.skills && typeof migrated.skills === 'object') {
+      Object.keys(migrated.skills).forEach(skillName => {
+        const skill = migrated.skills[skillName];
+        if (skill && typeof skill === 'object') {
+          // Ensure skill has required properties with default values
+          migrated.skills[skillName] = {
+            level: skill.level || 1,
+            xp: skill.xp || 0,
+            type: skill.type || 'increasing',
+            ...skill,
+          };
+        }
+      });
     }
 
     return migrated;
@@ -608,6 +703,107 @@ class StorageService {
     return workouts
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, limit);
+  }
+
+  // Numeric Task Entry management methods
+  getNumericTaskEntries(): NumericTaskEntry[] {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+    return this.appData.numericTaskEntries || [];
+  }
+
+  async addNumericTaskEntry(entry: NumericTaskEntry): Promise<void> {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+    this.appData.numericTaskEntries = this.appData.numericTaskEntries || [];
+    this.appData.numericTaskEntries.push(entry);
+    await this.saveAppData();
+  }
+
+  getNumericTaskEntriesByTaskId(taskId: string): NumericTaskEntry[] {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+    return (this.appData.numericTaskEntries || []).filter(entry => entry.taskId === taskId);
+  }
+
+  getNumericTaskEntriesByDate(date: string): NumericTaskEntry[] {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+    return (this.appData.numericTaskEntries || []).filter(entry => entry.date === date);
+  }
+
+  getTodaysNumericTaskEntry(taskId: string): NumericTaskEntry | undefined {
+    const today = new Date().toISOString().split('T')[0];
+    return this.getNumericTaskEntriesByDate(today).find(entry => entry.taskId === taskId);
+  }
+
+  async updateTaskCurrentDayValue(taskId: string, value: number): Promise<void> {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+    
+    const taskIndex = this.appData.tasks.findIndex(task => task.id === taskId);
+    if (taskIndex !== -1) {
+      this.appData.tasks[taskIndex].currentDayValue = value;
+      await this.saveAppData();
+    }
+  }
+
+  async updateTaskPendingValue(taskId: string, value: number): Promise<void> {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+    
+    const taskIndex = this.appData.tasks.findIndex(task => task.id === taskId);
+    if (taskIndex !== -1) {
+      this.appData.tasks[taskIndex].pendingValue = value;
+      await this.saveAppData();
+    }
+  }
+
+  // Binary Task Entry management methods
+  getBinaryTaskEntries(): BinaryTaskEntry[] {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+    return this.appData.binaryTaskEntries || [];
+  }
+
+  async addBinaryTaskEntry(entry: BinaryTaskEntry): Promise<void> {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+    this.appData.binaryTaskEntries = this.appData.binaryTaskEntries || [];
+    this.appData.binaryTaskEntries.push(entry);
+    await this.saveAppData();
+  }
+
+  getBinaryTaskEntriesByTaskId(taskId: string): BinaryTaskEntry[] {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+    return (this.appData.binaryTaskEntries || []).filter(entry => entry.taskId === taskId);
+  }
+
+  getBinaryTaskEntriesByDate(date: string): BinaryTaskEntry[] {
+    if (!this.appData) {
+      throw new Error('App data not initialized');
+    }
+    return (this.appData.binaryTaskEntries || []).filter(entry => entry.date === date);
+  }
+
+  getTaskHistory(taskId: string): {
+    binary: BinaryTaskEntry[];
+    numeric: NumericTaskEntry[];
+  } {
+    return {
+      binary: this.getBinaryTaskEntriesByTaskId(taskId),
+      numeric: this.getNumericTaskEntriesByTaskId(taskId)
+    };
   }
 
   // Get storage size info

@@ -6,6 +6,7 @@ import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 
 import AppNavigator from './src/navigation/AppNavigator';
 import StorageService from './src/services/StorageService';
+import BackgroundTaskService from './src/services/BackgroundTaskService';
 import { Colors, FontSizes } from './src/constants/theme';
 
 export default function App() {
@@ -20,6 +21,11 @@ export default function App() {
     try {
       const storageService = StorageService.getInstance();
       await storageService.initializeAppData();
+      
+      // Initialize background task service for auto-submit functionality
+      const backgroundTaskService = BackgroundTaskService.getInstance();
+      await backgroundTaskService.resetDailyValuesForRepeatingTasks();
+      
       setIsLoading(false);
     } catch (err) {
       console.error('Failed to initialize app:', err);

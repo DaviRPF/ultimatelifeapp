@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, Text, Dimensions } from 'react-native';
+import { LineChart } from 'react-native-gifted-charts';
 import { Colors, FontSizes, Spacing } from '../constants/theme';
 import { WeightEntry } from '../types';
 
@@ -10,13 +11,11 @@ interface WeightChartProps {
 const { width } = Dimensions.get('window');
 
 const WeightChart: React.FC<WeightChartProps> = ({ weightEntries }) => {
-  console.log('WeightChart received entries:', weightEntries.length);
-  
   if (weightEntries.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Text style={styles.emptyText}>No weight data to display</Text>
-        <Text style={styles.emptySubtext}>Add some weight entries to see your progress chart!</Text>
+        <Text style={styles.emptyText}>Nenhum dado de peso</Text>
+        <Text style={styles.emptySubtext}>Adicione registros de peso para ver seu progresso!</Text>
       </View>
     );
   }
@@ -26,33 +25,82 @@ const WeightChart: React.FC<WeightChartProps> = ({ weightEntries }) => {
     new Date(a.date).getTime() - new Date(b.date).getTime()
   );
 
-  // Get min and max weights for scaling
+  // Prepare data for gifted charts
+  const chartData = sortedEntries.map((entry, index) => {
+    const date = new Date(entry.date);
+    const label = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    
+    return {
+      value: entry.weight,
+      label,
+      dataPointText: `${entry.weight}kg`,
+      textShiftY: -10,
+      textShiftX: 0,
+      textColor: Colors.text,
+      textFontSize: 10,
+    };
+  });
+
   const weights = sortedEntries.map(entry => entry.weight);
   const minWeight = Math.min(...weights);
   const maxWeight = Math.max(...weights);
   const weightRange = maxWeight - minWeight || 1;
+  const trend = weights.length > 1 ? weights[weights.length - 1] - weights[0] : 0;
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Weight Progress</Text>
+      <Text style={styles.title}>Progresso do Peso</Text>
       
-      {/* Simple list view for now */}
-      <View style={styles.simpleListContainer}>
-        <Text style={styles.statsText}>Total Entries: {sortedEntries.length}</Text>
-        <Text style={styles.statsText}>Weight Range: {minWeight.toFixed(1)} - {maxWeight.toFixed(1)} kg</Text>
-        
-        {sortedEntries.slice(0, 5).map((entry, index) => (
-          <View key={entry.id} style={styles.entryRow}>
-            <Text style={styles.entryDate}>
-              {new Date(entry.date).toLocaleDateString()}
-            </Text>
-            <Text style={styles.entryWeight}>{entry.weight.toFixed(1)} kg</Text>
-          </View>
-        ))}
-        
-        {sortedEntries.length > 5 && (
-          <Text style={styles.moreText}>... and {sortedEntries.length - 5} more entries</Text>
-        )}
+      {/* Estatísticas */}
+      <View style={styles.statsContainer}>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Registros</Text>
+          <Text style={styles.statValue}>{sortedEntries.length}</Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Mín - Máx</Text>
+          <Text style={styles.statValue}>{minWeight.toFixed(1)} - {maxWeight.toFixed(1)} kg</Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Tendência</Text>
+          <Text style={[styles.statValue, { color: trend >= 0 ? Colors.warning : Colors.success }]}>
+            {trend >= 0 ? '+' : ''}{trend.toFixed(1)} kg
+          </Text>
+        </View>
+      </View>
+
+      {/* Gráfico */}
+      <View style={styles.chartContainer}>
+        <LineChart
+          data={chartData}
+          width={width - 100}
+          height={200}
+          backgroundColor="transparent"
+          curved
+          thickness={2}
+          color={Colors.primary}
+          dataPointsColor={Colors.primary}
+          dataPointsRadius={4}
+          rulesType="solid"
+          rulesColor={Colors.border}
+          xAxisColor={Colors.border}
+          yAxisColor={Colors.border}
+          yAxisTextStyle={{ color: Colors.textSecondary, fontSize: 10 }}
+          xAxisLabelTextStyle={{ color: Colors.textSecondary, fontSize: 9 }}
+          yAxisSide="left"
+          yAxisOffset={5}
+          maxValue={Math.ceil(maxWeight + weightRange * 0.1)}
+          minValue={Math.floor(minWeight - weightRange * 0.1)}
+          animateOnDataChange
+          animationDuration={800}
+          showDataPointsOnFocus
+          focusedDataPointColor={Colors.accent}
+          showTextOnFocus
+          textFontSize={10}
+          textColor={Colors.text}
+          noOfSections={4}
+          spacing={Math.max(20, (width - 150) / Math.max(1, chartData.length - 1))}
+        />
       </View>
     </View>
   );
@@ -62,8 +110,11 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: Colors.surface,
     borderRadius: 12,
-    padding: Spacing.lg,
-    margin: Spacing.lg,
+    padding: Spacing.md,
+    marginHorizontal: Spacing.md,
+    marginVertical: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   title: {
     fontSize: FontSizes.lg,
@@ -72,12 +123,42 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
     textAlign: 'center',
   },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.lg,
+    paddingHorizontal: Spacing.sm,
+  },
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.xs,
+  },
+  statValue: {
+    fontSize: FontSizes.sm,
+    fontWeight: 'bold',
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  chartContainer: {
+    alignItems: 'center',
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    padding: Spacing.sm,
+    marginHorizontal: -Spacing.xs,
+  },
   emptyContainer: {
     backgroundColor: Colors.surface,
     borderRadius: 12,
     padding: Spacing.xl,
     margin: Spacing.lg,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   emptyText: {
     fontSize: FontSizes.md,

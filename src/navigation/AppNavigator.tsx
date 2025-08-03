@@ -146,18 +146,23 @@ const AppNavigator = () => {
             presentation: 'modal'
           }}
         />
-        <Stack.Screen 
+        {/* <Stack.Screen 
           name="EditTask" 
           component={EditTaskScreen}
           options={{ 
             title: 'Edit Quest',
             presentation: 'modal'
           }}
-        />
+        /> */}
         <Stack.Screen 
           name="TaskDetails" 
           component={TaskDetailsScreen}
           options={{ title: 'Quest Details' }}
+        />
+        <Stack.Screen 
+          name="EditTask" 
+          component={EditTaskScreen}
+          options={{ title: 'Edit Task' }}
         />
         <Stack.Screen 
           name="CreateReward" 

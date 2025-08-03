@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSizes, Spacing } from '../../constants/theme';
 import StorageService from '../../services/StorageService';
 import { BodyMeasurements, BodyMeasurementEntry } from '../../types';
+import BodyMeasurementChart from '../../components/BodyMeasurementChart';
 
 const BodyMeasurementsScreen = () => {
   const navigation = useNavigation();
@@ -325,6 +326,12 @@ const BodyMeasurementsScreen = () => {
           </View>
         ) : (
           <>
+            {/* Gráficos das principais medições */}
+            <BodyMeasurementChart entries={measurementEntries} measurementKey="bracoContraido" />
+            <BodyMeasurementChart entries={measurementEntries} measurementKey="peitoral" />
+            <BodyMeasurementChart entries={measurementEntries} measurementKey="abdomen" />
+            <BodyMeasurementChart entries={measurementEntries} measurementKey="perna" />
+            
             <Text style={styles.historyTitle}>Measurement History</Text>
             {measurementEntries
               .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
