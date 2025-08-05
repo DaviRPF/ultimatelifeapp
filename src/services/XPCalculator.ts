@@ -162,6 +162,43 @@ class XPCalculator {
     return Math.round(totalSkillXP / associatedSkills.length);
   }
 
+  // Calculate characteristic XP from skills with custom impact percentages
+  calculateCharacteristicXPWithImpacts(characteristicName: string, allSkills: { [skillName: string]: Skill }): number {
+    let totalWeightedXP = 0;
+    let totalWeight = 0;
+
+    // Find all skills that impact this characteristic
+    Object.entries(allSkills).forEach(([skillName, skill]) => {
+      // Check both new impact system and old characteristic system
+      const impactPercentage = skill.characteristicImpacts?.[characteristicName] || 
+                              (skill.characteristic === characteristicName ? 100 : 0);
+      
+      if (impactPercentage > 0) {
+        const weight = impactPercentage / 100; // Convert percentage to decimal
+        totalWeightedXP += skill.xp * weight;
+        totalWeight += weight;
+      }
+    });
+
+    return totalWeight > 0 ? Math.round(totalWeightedXP / totalWeight) : 0;
+  }
+
+  // Calculate incremental XP gain for characteristic based on skill XP gain and impact
+  calculateCharacteristicXPGain(skillXPGain: number, skillName: string, characteristicName: string, skill: Skill): number {
+    // Get the impact percentage for this characteristic from this skill
+    const impactPercentage = skill.characteristicImpacts?.[characteristicName] || 
+                            (skill.characteristic === characteristicName ? 100 : 0);
+    
+    if (impactPercentage <= 0) return 0;
+    
+    // Apply the impact percentage to the skill XP gain
+    const characteristicXPGain = Math.round(skillXPGain * (impactPercentage / 100));
+    
+    console.log(`🔍 CharXP Calc: Skill ${skillName} -> Char ${characteristicName}: ${skillXPGain} XP * ${impactPercentage}% = ${characteristicXPGain} XP`);
+    
+    return characteristicXPGain;
+  }
+
   // Check if task should auto-fail based on deadline
   shouldTaskAutoFail(task: Task): boolean {
     if (!task.autoFail || !task.dueDate) return false;

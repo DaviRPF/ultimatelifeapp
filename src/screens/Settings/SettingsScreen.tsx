@@ -8,7 +8,9 @@ import {
   Switch,
   Alert,
   Share,
-  Linking
+  Linking,
+  Modal,
+  TextInput
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -37,6 +39,9 @@ const SettingsScreen = () => {
     autoBackup: false
   });
   const [loading, setLoading] = useState(true);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetPhrase, setResetPhrase] = useState('');
+  const [confirmationStep, setConfirmationStep] = useState(0);
   
   const soundService = SoundService.getInstance();
   const storageService = StorageService.getInstance();
@@ -150,25 +155,48 @@ const SettingsScreen = () => {
   };
 
   const resetAllData = () => {
-    Alert.alert(
-      'Reset All Data',
-      'This will permanently delete ALL your progress, tasks, skills, and achievements. This action cannot be undone!',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'RESET ALL',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await AsyncStorage.clear();
-              Alert.alert('Success', 'All data has been reset. Please restart the app.');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to reset data');
-            }
-          }
+    setShowResetModal(true);
+    setConfirmationStep(0);
+    setResetPhrase('');
+  };
+
+  const handleResetConfirmation = async () => {
+    const requiredPhrase = "Eu entendo que vou perder todo meu progresso permanentemente";
+    
+    if (confirmationStep === 0) {
+      if (resetPhrase.trim() === requiredPhrase) {
+        setConfirmationStep(1);
+        setResetPhrase('');
+      } else {
+        Alert.alert(
+          'Frase Incorreta',
+          'Por favor, digite exatamente a frase solicitada para confirmar que você entende as consequências.'
+        );
+      }
+    } else if (confirmationStep === 1) {
+      if (resetPhrase.trim() === requiredPhrase) {
+        try {
+          await AsyncStorage.clear();
+          setShowResetModal(false);
+          setConfirmationStep(0);
+          setResetPhrase('');
+          Alert.alert('Sucesso', 'Todos os dados foram apagados. Por favor, reinicie o aplicativo.');
+        } catch (error) {
+          Alert.alert('Erro', 'Falha ao apagar os dados');
         }
-      ]
-    );
+      } else {
+        Alert.alert(
+          'Confirmação Final Incorreta',
+          'Frase incorreta. Digite novamente para confirmar definitivamente a exclusão de todos os dados.'
+        );
+      }
+    }
+  };
+
+  const closeResetModal = () => {
+    setShowResetModal(false);
+    setConfirmationStep(0);
+    setResetPhrase('');
   };
 
   const openGitHub = () => {
@@ -424,6 +452,72 @@ const SettingsScreen = () => {
           </View>
         </>
       ))}
+
+      {/* Reset Confirmation Modal */}
+      <Modal
+        visible={showResetModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeResetModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.resetModalContent}>
+            <View style={styles.resetModalHeader}>
+              <Ionicons name="warning" size={48} color={Colors.danger} />
+              <Text style={styles.resetModalTitle}>
+                {confirmationStep === 0 ? 'ATENÇÃO: Resetar Todos os Dados' : 'CONFIRMAÇÃO FINAL'}
+              </Text>
+            </View>
+
+            <Text style={styles.resetModalDescription}>
+              {confirmationStep === 0 
+                ? 'Esta ação irá PERMANENTEMENTE deletar:\n\n• Todas as suas tasks e progresso\n• Todas as skills e níveis\n• Todas as conquistas\n• Todo o histórico de atividades\n• Todas as configurações\n\nEsta ação NÃO PODE ser desfeita!'
+                : 'ÚLTIMA CHANCE!\n\nTodos os seus dados serão perdidos PARA SEMPRE.\n\nSe você tem certeza absoluta, digite a frase novamente:'
+              }
+            </Text>
+
+            <View style={styles.resetInputContainer}>
+              <Text style={styles.resetInputLabel}>
+                Digite exatamente esta frase para continuar:
+              </Text>
+              <Text style={styles.requiredPhrase}>
+                "Eu entendo que vou perder todo meu progresso permanentemente"
+              </Text>
+              <TextInput
+                style={styles.resetInput}
+                placeholder="Digite a frase aqui..."
+                placeholderTextColor={Colors.textSecondary}
+                value={resetPhrase}
+                onChangeText={setResetPhrase}
+                multiline={true}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+            </View>
+
+            <View style={styles.resetModalButtons}>
+              <TouchableOpacity 
+                style={styles.resetCancelButton} 
+                onPress={closeResetModal}
+              >
+                <Text style={styles.resetCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[
+                  styles.resetConfirmButton,
+                  confirmationStep === 1 && styles.resetFinalConfirmButton
+                ]} 
+                onPress={handleResetConfirmation}
+              >
+                <Text style={styles.resetConfirmText}>
+                  {confirmationStep === 0 ? 'Continuar' : 'APAGAR TUDO'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -605,6 +699,105 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: Colors.textSecondary,
     textAlign: 'center',
+  },
+  // Reset Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  resetModalContent: {
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    padding: Spacing.xl,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+  },
+  resetModalHeader: {
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  resetModalTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: 'bold',
+    color: Colors.danger,
+    textAlign: 'center',
+    marginTop: Spacing.sm,
+  },
+  resetModalDescription: {
+    fontSize: FontSizes.md,
+    color: Colors.text,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: Spacing.lg,
+  },
+  resetInputContainer: {
+    marginBottom: Spacing.lg,
+  },
+  resetInputLabel: {
+    fontSize: FontSizes.sm,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.xs,
+    textAlign: 'center',
+  },
+  requiredPhrase: {
+    fontSize: FontSizes.md,
+    color: Colors.primary,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    backgroundColor: Colors.background,
+    padding: Spacing.md,
+    borderRadius: 8,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  resetInput: {
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    padding: Spacing.md,
+    fontSize: FontSizes.md,
+    color: Colors.text,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  resetModalButtons: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  resetCancelButton: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  resetCancelText: {
+    fontSize: FontSizes.md,
+    color: Colors.text,
+    fontWeight: '600',
+  },
+  resetConfirmButton: {
+    flex: 1,
+    backgroundColor: Colors.warning,
+    borderRadius: 8,
+    padding: Spacing.md,
+    alignItems: 'center',
+  },
+  resetFinalConfirmButton: {
+    backgroundColor: Colors.danger,
+  },
+  resetConfirmText: {
+    fontSize: FontSizes.md,
+    color: Colors.background,
+    fontWeight: 'bold',
   },
 });
 

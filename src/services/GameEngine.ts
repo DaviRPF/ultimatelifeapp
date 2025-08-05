@@ -355,31 +355,106 @@ class GameEngine {
       await this.storageService.updateSkill(skillName, updatedSkill);
       affectedSkills.push(skillName);
 
-      // Now update the characteristic this skill belongs to
-      const characteristicName = skill.characteristic;
-      await this.updateCharacteristicsFromSkills([characteristicName]);
+      // Now update characteristics that this skill impacts
+      const affectedCharacteristics = new Set<string>();
+      
+      // Add primary characteristic
+      if (skill.characteristic) {
+        affectedCharacteristics.add(skill.characteristic);
+      }
+      
+      // Add characteristics from impact system
+      if (skill.characteristicImpacts) {
+        Object.keys(skill.characteristicImpacts).forEach(charName => {
+          if (skill.characteristicImpacts![charName] > 0) {
+            affectedCharacteristics.add(charName);
+          }
+        });
+      }
+      
+      // Add characteristics from new multi-characteristic system
+      if (skill.characteristics) {
+        skill.characteristics.forEach(charName => affectedCharacteristics.add(charName));
+      }
+      
+      // Update each affected characteristic incrementally
+      for (const charName of affectedCharacteristics) {
+        await this.updateCharacteristicIncremental(charName, skillName, skillXPChange, updatedSkill);
+      }
     }
 
     return affectedSkills;
+  }
+
+  // Update characteristic incrementally based on skill XP gain and impact
+  private async updateCharacteristicIncremental(characteristicName: string, skillName: string, skillXPGain: number, skill: Skill): Promise<void> {
+    console.log(`🔍 Updating characteristic ${characteristicName} incrementally from skill ${skillName}`);
+    
+    // Calculate how much XP this characteristic should gain based on the skill's impact
+    const characteristicXPGain = this.xpCalculator.calculateCharacteristicXPGain(skillXPGain, skillName, characteristicName, skill);
+    
+    if (characteristicXPGain === 0) {
+      console.log(`🔍 No XP gain for characteristic ${characteristicName} from skill ${skillName}`);
+      return;
+    }
+    
+    // Get existing characteristic or create new one
+    let existingChar = this.storageService.getCharacteristic(characteristicName);
+    if (!existingChar) {
+      console.log(`🔍 Creating new characteristic: ${characteristicName}`);
+      existingChar = {
+        name: characteristicName,
+        level: 1,
+        xp: 0,
+        type: skill.type || 'increasing',
+        associatedSkills: []
+      };
+    }
+    
+    // Apply incremental XP gain
+    const newCharXP = Math.max(0, existingChar.xp + characteristicXPGain);
+    const newCharLevel = this.xpCalculator.calculateSkillLevel(newCharXP);
+    
+    console.log(`🔍 Characteristic ${characteristicName}: XP ${existingChar.xp} -> ${newCharXP} (+${characteristicXPGain}), Level ${existingChar.level} -> ${newCharLevel}`);
+    
+    // Update associated skills list
+    const associatedSkills = existingChar.associatedSkills || [];
+    if (!associatedSkills.includes(skillName)) {
+      associatedSkills.push(skillName);
+    }
+    
+    const updatedCharacteristic: Characteristic = {
+      ...existingChar,
+      level: newCharLevel,
+      xp: newCharXP,
+      associatedSkills
+    };
+    
+    await this.storageService.updateCharacteristic(characteristicName, updatedCharacteristic);
+    console.log(`🔍 Characteristic ${characteristicName} updated successfully`);
   }
 
   // Update characteristics based on associated skills
   private async updateCharacteristicsFromSkills(characteristicNames: string[]): Promise<void> {
     console.log(`🔍 Updating characteristics: ${characteristicNames.join(', ')}`);
     
+    const allSkills = this.storageService.getSkills();
+    
     for (const charName of characteristicNames) {
       console.log(`🔍 Processing characteristic: ${charName}`);
-      // Get all skills associated with this characteristic
-      const allSkills = this.storageService.getSkills();
-      const associatedSkillNames = Object.keys(allSkills).filter(skillName => 
-        allSkills[skillName].characteristic === charName
-      );
-      const associatedSkills = associatedSkillNames.map(skillName => allSkills[skillName]);
+      
+      // Find skills that impact this characteristic (either through new impact system or old characteristic system)
+      const associatedSkillNames = Object.keys(allSkills).filter(skillName => {
+        const skill = allSkills[skillName];
+        return (skill.characteristicImpacts?.[charName] && skill.characteristicImpacts[charName] > 0) ||
+               skill.characteristic === charName;
+      });
 
       console.log(`🔍 Associated skills for ${charName}:`, associatedSkillNames);
 
-      if (associatedSkills.length > 0) {
-        const charXP = this.xpCalculator.calculateCharacteristicXP(associatedSkills);
+      if (associatedSkillNames.length > 0) {
+        // Use new impact-based calculation
+        const charXP = this.xpCalculator.calculateCharacteristicXPWithImpacts(charName, allSkills);
         const charLevel = this.xpCalculator.calculateSkillLevel(charXP);
 
         console.log(`🔍 Characteristic ${charName}: XP ${charXP}, Level ${charLevel}`);
@@ -469,6 +544,99 @@ class GameEngine {
           break;
         case 'gold_earned':
           shouldUnlock = hero.gold >= achievement.condition.target;
+          break;
+        case 'weight_lost':
+        case 'weight_gained':
+          shouldUnlock = this.checkWeightAchievement(achievement.condition);
+          break;
+        case 'max_bench_press':
+        case 'max_squat':
+        case 'max_deadlift':
+          shouldUnlock = this.checkMaxLiftAchievement(achievement.condition);
+          break;
+        case 'total_weight_lifted':
+          shouldUnlock = this.checkTotalWeightAchievement(achievement.condition);
+          break;
+        case 'body_measurement':
+          shouldUnlock = this.checkBodyMeasurementAchievement(achievement.condition);
+          break;
+        case 'workout_count':
+          shouldUnlock = this.checkWorkoutCountAchievement(achievement.condition);
+          break;
+        case 'cardio_minutes':
+          shouldUnlock = this.checkCardioMinutesAchievement(achievement.condition);
+          break;
+        case 'consecutive_workouts':
+          shouldUnlock = this.checkConsecutiveWorkoutsAchievement(achievement.condition);
+          break;
+        case 'exercise_max_weight':
+          shouldUnlock = this.checkExerciseMaxWeightAchievement(achievement.condition);
+          break;
+        case 'exercise_total_reps':
+          shouldUnlock = this.checkExerciseTotalRepsAchievement(achievement.condition);
+          break;
+        case 'flexao_count':
+          shouldUnlock = this.checkFlexaoCountAchievement(achievement.condition);
+          break;
+        case 'barra_fixa_count':
+          shouldUnlock = this.checkBarraFixaCountAchievement(achievement.condition);
+          break;
+      }
+
+      if (shouldUnlock) {
+        achievement.unlocked = true;
+        achievement.unlockedAt = new Date().toISOString();
+        unlockedAchievements.push(achievement.title);
+        
+        // Update hero XP multiplier
+        const newMultiplier = hero.xpMultiplier + (achievement.xpMultiplier - 1);
+        await this.storageService.updateHero({ xpMultiplier: newMultiplier });
+        xpMultiplierChanged = true;
+      }
+    }
+
+    // Check fitness achievements
+    for (const achievement of achievements.fitness) {
+      if (achievement.unlocked) continue;
+
+      let shouldUnlock = false;
+
+      switch (achievement.condition.type) {
+        case 'weight_lost':
+        case 'weight_gained':
+          shouldUnlock = this.checkWeightAchievement(achievement.condition);
+          break;
+        case 'max_bench_press':
+        case 'max_squat':
+        case 'max_deadlift':
+          shouldUnlock = this.checkMaxLiftAchievement(achievement.condition);
+          break;
+        case 'total_weight_lifted':
+          shouldUnlock = this.checkTotalWeightAchievement(achievement.condition);
+          break;
+        case 'body_measurement':
+          shouldUnlock = this.checkBodyMeasurementAchievement(achievement.condition);
+          break;
+        case 'workout_count':
+          shouldUnlock = this.checkWorkoutCountAchievement(achievement.condition);
+          break;
+        case 'cardio_minutes':
+          shouldUnlock = this.checkCardioMinutesAchievement(achievement.condition);
+          break;
+        case 'consecutive_workouts':
+          shouldUnlock = this.checkConsecutiveWorkoutsAchievement(achievement.condition);
+          break;
+        case 'exercise_max_weight':
+          shouldUnlock = this.checkExerciseMaxWeightAchievement(achievement.condition);
+          break;
+        case 'exercise_total_reps':
+          shouldUnlock = this.checkExerciseTotalRepsAchievement(achievement.condition);
+          break;
+        case 'flexao_count':
+          shouldUnlock = this.checkFlexaoCountAchievement(achievement.condition);
+          break;
+        case 'barra_fixa_count':
+          shouldUnlock = this.checkBarraFixaCountAchievement(achievement.condition);
           break;
       }
 
@@ -597,33 +765,51 @@ class GameEngine {
   }
 
   // Create a new skill manually from Skills screen
-  async createSkill(skillName: string, characteristicName: string): Promise<void> {
+  async createSkill(skillName: string, skillType: 'increasing' | 'decreasing', characteristics: string[], impacts?: { [key: string]: number }): Promise<void> {
     const existingSkill = this.storageService.getSkill(skillName);
     
     if (existingSkill) {
       throw new Error('Skill already exists');
     }
 
-    if (!characteristicName) {
-      throw new Error('A characteristic is required');
+    if (!characteristics || characteristics.length === 0) {
+      throw new Error('At least one characteristic is required');
+    }
+
+    // Use the first characteristic as the primary one (for backward compatibility)
+    const primaryCharacteristic = characteristics[0];
+
+    // Create default impacts if not provided (equal distribution)
+    let characteristicImpacts: { [key: string]: number } = {};
+    if (impacts && Object.keys(impacts).length > 0) {
+      characteristicImpacts = impacts;
+    } else {
+      // Default: equal distribution among all characteristics
+      const equalImpact = Math.floor(100 / characteristics.length);
+      let remaining = 100 - (equalImpact * characteristics.length);
+      
+      characteristics.forEach((char, index) => {
+        characteristicImpacts[char] = equalImpact + (index === 0 ? remaining : 0);
+      });
     }
 
     const newSkill: Skill = {
       level: 1,
       xp: 0,
-      type: 'increasing',
-      characteristic: characteristicName
+      type: skillType,
+      characteristic: primaryCharacteristic,
+      characteristicImpacts
     };
     
     await this.storageService.updateSkill(skillName, newSkill);
 
     // Update characteristic to include this skill
-    const existingChar = this.storageService.getCharacteristic(characteristicName);
+    const existingChar = this.storageService.getCharacteristic(primaryCharacteristic);
     
     if (existingChar) {
       // Add this skill to the characteristic's skills list
       if (!existingChar.skills.includes(skillName)) {
-        await this.storageService.updateCharacteristic(characteristicName, {
+        await this.storageService.updateCharacteristic(primaryCharacteristic, {
           ...existingChar,
           skills: [...existingChar.skills, skillName]
         });
@@ -637,7 +823,78 @@ class GameEngine {
         skills: [skillName]
       };
       
-      await this.storageService.updateCharacteristic(characteristicName, newCharacteristic);
+      await this.storageService.updateCharacteristic(primaryCharacteristic, newCharacteristic);
+    }
+  }
+
+  // Update an existing skill with full parameters
+  async updateSkillComplete(
+    skillName: string, 
+    skillType: 'increasing' | 'decreasing', 
+    characteristics: string[], 
+    characteristicImpacts?: { [key: string]: number }
+  ): Promise<void> {
+    const existingSkill = this.storageService.getSkill(skillName);
+    
+    if (!existingSkill) {
+      throw new Error('Skill not found');
+    }
+
+    if (characteristics.length === 0) {
+      throw new Error('At least one characteristic is required');
+    }
+
+    const primaryCharacteristic = characteristics[0];
+    const oldCharacteristicName = existingSkill.characteristic;
+
+    // Update the skill
+    const updatedSkill: Skill = {
+      ...existingSkill,
+      type: skillType,
+      characteristic: primaryCharacteristic,
+      characteristics,
+      characteristicImpacts: characteristicImpacts || {}
+    };
+    
+    await this.storageService.updateSkill(skillName, updatedSkill);
+
+    // Update characteristics associations
+    const allOldCharacteristics = existingSkill.characteristics || [oldCharacteristicName];
+    
+    // Remove skill from old characteristics that are no longer used
+    for (const oldChar of allOldCharacteristics) {
+      if (!characteristics.includes(oldChar)) {
+        const char = this.storageService.getCharacteristic(oldChar);
+        if (char && char.associatedSkills) {
+          await this.storageService.updateCharacteristic(oldChar, {
+            ...char,
+            associatedSkills: char.associatedSkills.filter(s => s !== skillName)
+          });
+        }
+      }
+    }
+
+    // Add skill to new characteristics
+    for (const charName of characteristics) {
+      const char = this.storageService.getCharacteristic(charName);
+      if (char) {
+        if (!char.associatedSkills || !char.associatedSkills.includes(skillName)) {
+          await this.storageService.updateCharacteristic(charName, {
+            ...char,
+            associatedSkills: [...(char.associatedSkills || []), skillName]
+          });
+        }
+      } else {
+        // Create new characteristic if it doesn't exist
+        const newCharacteristic: Characteristic = {
+          name: charName,
+          level: 1,
+          xp: 0,
+          associatedSkills: [skillName]
+        };
+        
+        await this.storageService.updateCharacteristic(charName, newCharacteristic);
+      }
     }
   }
 
@@ -887,6 +1144,241 @@ class GameEngine {
       success: true, 
       message: `Reward purchased successfully!${stockMessage}` 
     };
+  }
+
+  // Helper methods for fitness achievement checking
+  private checkWeightAchievement(condition: any): boolean {
+    const weightEntries = this.storageService.getWeightEntries();
+    if (weightEntries.length < 2) return condition.target === 0; // First weigh-in
+    
+    const sortedWeights = [...weightEntries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const firstWeight = sortedWeights[0].weight;
+    const currentWeight = sortedWeights[sortedWeights.length - 1].weight;
+    const weightChange = Math.abs(currentWeight - firstWeight);
+    
+    return weightChange >= condition.target;
+  }
+
+  private checkMaxLiftAchievement(condition: any): boolean {
+    const workouts = this.storageService.getWorkouts();
+    let maxWeight = 0;
+    
+    const exerciseNameMap: { [key: string]: string[] } = {
+      'max_bench_press': ['supino', 'bench press', 'supino reto', 'supino horizontal'],
+      'max_squat': ['agachamento', 'squat', 'agachamento livre', 'back squat'],
+      'max_deadlift': ['levantamento terra', 'deadlift', 'terra', 'levantamento-terra']
+    };
+    
+    const exerciseNames = exerciseNameMap[condition.type] || [];
+    
+    for (const workout of workouts) {
+      for (const exercise of workout.exercises) {
+        const exerciseName = exercise.exerciseName.toLowerCase();
+        const isTargetExercise = exerciseNames.some(name => exerciseName.includes(name));
+        
+        if (isTargetExercise) {
+          for (const set of exercise.sets) {
+            if (set.weight && set.weight > maxWeight) {
+              maxWeight = set.weight;
+            }
+          }
+        }
+      }
+    }
+    
+    return maxWeight >= condition.target;
+  }
+
+  private checkTotalWeightAchievement(condition: any): boolean {
+    const workouts = this.storageService.getWorkouts();
+    let totalWeight = 0;
+    
+    for (const workout of workouts) {
+      for (const exercise of workout.exercises) {
+        for (const set of exercise.sets) {
+          if (set.weight && set.reps) {
+            totalWeight += set.weight * set.reps;
+          }
+        }
+      }
+    }
+    
+    return totalWeight >= condition.target;
+  }
+
+  private checkBodyMeasurementAchievement(condition: any): boolean {
+    if (!condition.measurementType) return false;
+    
+    const measurementEntries = this.storageService.getBodyMeasurementEntries();
+    if (measurementEntries.length === 0) return false;
+    
+    // Get latest measurement entry
+    const sortedEntries = [...measurementEntries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const latestEntry = sortedEntries[0];
+    
+    const measurementValue = latestEntry.measurements[condition.measurementType as keyof typeof latestEntry.measurements];
+    return measurementValue !== undefined && measurementValue >= condition.target;
+  }
+
+  private checkWorkoutCountAchievement(condition: any): boolean {
+    const workouts = this.storageService.getWorkouts();
+    return workouts.length >= condition.target;
+  }
+
+  private checkCardioMinutesAchievement(condition: any): boolean {
+    const workouts = this.storageService.getWorkouts();
+    let totalCardioMinutes = 0;
+    
+    for (const workout of workouts) {
+      for (const exercise of workout.exercises) {
+        // Check if exercise is cardio based on category or name
+        const isCardio = exercise.exerciseCategory === 'cardio' || 
+                         exercise.exerciseName.toLowerCase().includes('cardio') ||
+                         exercise.exerciseName.toLowerCase().includes('corrida') ||
+                         exercise.exerciseName.toLowerCase().includes('bicicleta') ||
+                         exercise.exerciseName.toLowerCase().includes('esteira') ||
+                         exercise.exerciseName.toLowerCase().includes('elíptico');
+        
+        if (isCardio) {
+          for (const set of exercise.sets) {
+            // For cardio, duration is usually stored in reps or has a duration field
+            if (set.duration) {
+              totalCardioMinutes += set.duration;
+            } else if (set.reps) {
+              // Assume reps represents minutes for cardio exercises
+              totalCardioMinutes += set.reps;
+            }
+          }
+        }
+      }
+    }
+    
+    return totalCardioMinutes >= condition.target;
+  }
+
+  private checkConsecutiveWorkoutsAchievement(condition: any): boolean {
+    const workouts = this.storageService.getWorkouts();
+    if (workouts.length === 0) return false;
+    
+    // Sort workouts by date
+    const sortedWorkouts = [...workouts].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    
+    let maxConsecutive = 0;
+    let currentConsecutive = 1;
+    
+    for (let i = 1; i < sortedWorkouts.length; i++) {
+      const currentDate = new Date(sortedWorkouts[i].date);
+      const previousDate = new Date(sortedWorkouts[i - 1].date);
+      
+      // Check if dates are consecutive (difference of 1 day)
+      const dayDifference = Math.abs(currentDate.getTime() - previousDate.getTime()) / (1000 * 60 * 60 * 24);
+      
+      if (dayDifference <= 1) {
+        currentConsecutive++;
+      } else {
+        maxConsecutive = Math.max(maxConsecutive, currentConsecutive);
+        currentConsecutive = 1;
+      }
+    }
+    
+    maxConsecutive = Math.max(maxConsecutive, currentConsecutive);
+    return maxConsecutive >= condition.target;
+  }
+
+  private checkExerciseMaxWeightAchievement(condition: any): boolean {
+    if (!condition.exerciseName) return false;
+    
+    const workouts = this.storageService.getWorkouts();
+    let maxWeight = 0;
+    
+    for (const workout of workouts) {
+      for (const exercise of workout.exercises) {
+        if (exercise.exerciseId === condition.exerciseName || 
+            exercise.exerciseName.toLowerCase().includes(condition.exerciseName.toLowerCase())) {
+          for (const set of exercise.sets) {
+            if (set.weight && set.weight > maxWeight) {
+              maxWeight = set.weight;
+            }
+          }
+        }
+      }
+    }
+    
+    return maxWeight >= condition.target;
+  }
+
+  private checkExerciseTotalRepsAchievement(condition: any): boolean {
+    if (!condition.exerciseName) return false;
+    
+    const workouts = this.storageService.getWorkouts();
+    let totalReps = 0;
+    
+    for (const workout of workouts) {
+      for (const exercise of workout.exercises) {
+        if (exercise.exerciseId === condition.exerciseName || 
+            exercise.exerciseName.toLowerCase().includes(condition.exerciseName.toLowerCase())) {
+          for (const set of exercise.sets) {
+            if (set.reps) {
+              totalReps += set.reps;
+            }
+            // For time-based exercises like plank, use duration as reps
+            if (set.duration && condition.unit === 'segundos') {
+              totalReps += set.duration;
+            }
+          }
+        }
+      }
+    }
+    
+    return totalReps >= condition.target;
+  }
+
+  private checkFlexaoCountAchievement(condition: any): boolean {
+    const workouts = this.storageService.getWorkouts();
+    let totalFlexoes = 0;
+    
+    const flexaoNames = ['flexao', 'flexão', 'push-up', 'pushup', 'push up'];
+    
+    for (const workout of workouts) {
+      for (const exercise of workout.exercises) {
+        const exerciseName = exercise.exerciseName.toLowerCase();
+        const isFlexao = flexaoNames.some(name => exerciseName.includes(name));
+        
+        if (isFlexao) {
+          for (const set of exercise.sets) {
+            if (set.reps) {
+              totalFlexoes += set.reps;
+            }
+          }
+        }
+      }
+    }
+    
+    return totalFlexoes >= condition.target;
+  }
+
+  private checkBarraFixaCountAchievement(condition: any): boolean {
+    const workouts = this.storageService.getWorkouts();
+    let totalBarras = 0;
+    
+    const barraNames = ['barra fixa', 'pull-up', 'pullup', 'pull up', 'chin-up', 'chinup', 'chin up'];
+    
+    for (const workout of workouts) {
+      for (const exercise of workout.exercises) {
+        const exerciseName = exercise.exerciseName.toLowerCase();
+        const isBarra = barraNames.some(name => exerciseName.includes(name));
+        
+        if (isBarra) {
+          for (const set of exercise.sets) {
+            if (set.reps) {
+              totalBarras += set.reps;
+            }
+          }
+        }
+      }
+    }
+    
+    return totalBarras >= condition.target;
   }
 }
 

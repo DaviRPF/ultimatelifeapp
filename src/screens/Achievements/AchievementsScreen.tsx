@@ -15,12 +15,13 @@ import StorageService from '../../services/StorageService';
 import GameEngine from '../../services/GameEngine';
 import { Colors, FontSizes, Spacing } from '../../constants/theme';
 
-type TabType = 'default' | 'custom';
+type TabType = 'default' | 'fitness' | 'custom';
 
 const AchievementsScreen = () => {
   const navigation = useNavigation();
   const [activeTab, setActiveTab] = useState<TabType>('default');
   const [defaultAchievements, setDefaultAchievements] = useState<DefaultAchievement[]>([]);
+  const [fitnessAchievements, setFitnessAchievements] = useState<DefaultAchievement[]>([]);
   const [customAchievements, setCustomAchievements] = useState<CustomAchievement[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -28,6 +29,7 @@ const AchievementsScreen = () => {
     try {
       const achievements = StorageService.getInstance().getAchievements();
       setDefaultAchievements(achievements.default);
+      setFitnessAchievements(achievements.fitness || []);
       setCustomAchievements(achievements.custom);
     } catch (error) {
       console.error('Error loading achievements:', error);
@@ -43,7 +45,7 @@ const AchievementsScreen = () => {
   useFocusEffect(
     useCallback(() => {
       loadAchievements();
-    }, [loadAchievements])
+    }, [])
   );
 
   useEffect(() => {
@@ -63,6 +65,23 @@ const AchievementsScreen = () => {
         return Math.min(completedTasks / achievement.condition.target, 1);
       case 'gold_earned':
         return Math.min(hero.gold / achievement.condition.target, 1);
+      // For fitness achievements, we'll use the GameEngine to calculate current values
+      case 'weight_lost':
+      case 'weight_gained':
+      case 'max_bench_press':
+      case 'max_squat':
+      case 'max_deadlift':
+      case 'total_weight_lifted':
+      case 'body_measurement':
+      case 'workout_count':
+      case 'cardio_minutes':
+      case 'consecutive_workouts':
+      case 'exercise_max_weight':
+      case 'exercise_total_reps':
+      case 'flexao_count':
+      case 'barra_fixa_count':
+        // For fitness achievements, return the current progress based on whether it's unlocked
+        return achievement.unlocked ? 1 : 0.5; // Show partial progress for fitness achievements
       default:
         return 0;
     }
@@ -80,6 +99,22 @@ const AchievementsScreen = () => {
         return tasks.filter(task => task.completed).length;
       case 'gold_earned':
         return hero.gold;
+      // For fitness achievements, we'll show 0 or the target value
+      case 'weight_lost':
+      case 'weight_gained':
+      case 'max_bench_press':
+      case 'max_squat':
+      case 'max_deadlift':
+      case 'total_weight_lifted':
+      case 'body_measurement':
+      case 'workout_count':
+      case 'cardio_minutes':
+      case 'consecutive_workouts':
+      case 'exercise_max_weight':
+      case 'exercise_total_reps':
+      case 'flexao_count':
+      case 'barra_fixa_count':
+        return achievement.unlocked ? achievement.condition.target : 0;
       default:
         return 0;
     }
@@ -206,6 +241,19 @@ const AchievementsScreen = () => {
           showsVerticalScrollIndicator={false}
         />
       );
+    } else if (activeTab === 'fitness') {
+      return (
+        <FlatList
+          data={fitnessAchievements}
+          renderItem={renderDefaultAchievement}
+          keyExtractor={(item) => item.id}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+        />
+      );
     } else {
       return (
         <View style={styles.customTabContainer}>
@@ -250,7 +298,26 @@ const AchievementsScreen = () => {
               activeTab === 'default' && styles.activeTabText
             ]}
           >
-            Default
+            Geral
+          </Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'fitness' && styles.activeTab]}
+          onPress={() => setActiveTab('fitness')}
+        >
+          <Ionicons
+            name="fitness"
+            size={20}
+            color={activeTab === 'fitness' ? Colors.textLight : Colors.textSecondary}
+          />
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'fitness' && styles.activeTabText
+            ]}
+          >
+            Fitness
           </Text>
         </TouchableOpacity>
         

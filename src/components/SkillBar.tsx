@@ -86,9 +86,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderRadius: 12,
     padding: Spacing.md,
+    paddingRight: Spacing.xl + Spacing.md, // Extra space for action buttons
     marginBottom: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.border,
+    minHeight: 100, // Ensure minimum height for proper display
   },
   header: {
     flexDirection: 'row',
@@ -100,6 +102,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    minHeight: 24, // Ensure minimum height
   },
   skillIcon: {
     fontSize: FontSizes.lg,
@@ -110,6 +113,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: Colors.text,
     flex: 1,
+    marginRight: Spacing.sm, // Space between name and type
   },
   skillType: {
     fontSize: FontSizes.xs,

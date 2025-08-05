@@ -87,7 +87,7 @@ const WeightChart: React.FC<WeightChartProps> = ({ weightEntries }) => {
           yAxisColor={Colors.border}
           yAxisTextStyle={{ color: Colors.textSecondary, fontSize: 10 }}
           xAxisLabelTextStyle={{ color: Colors.textSecondary, fontSize: 9 }}
-          yAxisSide="left"
+          yAxisSide={'left' as any}
           yAxisOffset={5}
           maxValue={Math.ceil(maxWeight + weightRange * 0.1)}
           minValue={Math.floor(minWeight - weightRange * 0.1)}

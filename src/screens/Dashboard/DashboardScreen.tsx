@@ -72,7 +72,7 @@ const DashboardScreen = () => {
   useFocusEffect(
     useCallback(() => {
       loadDashboardData();
-    }, [loadDashboardData])
+    }, [])
   );
 
   const handleEditName = () => {

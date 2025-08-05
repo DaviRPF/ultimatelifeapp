@@ -47,7 +47,7 @@ const WorkoutHistoryScreen = () => {
   useFocusEffect(
     useCallback(() => {
       loadWorkouts();
-    }, [loadWorkouts])
+    }, [])
   );
 
   const onRefresh = async () => {

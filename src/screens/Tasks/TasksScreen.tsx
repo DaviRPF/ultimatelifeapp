@@ -456,7 +456,7 @@ const TasksScreen = () => {
   useFocusEffect(
     useCallback(() => {
       loadTasks();
-    }, [loadTasks])
+    }, [])
   );
 
   // Filter tasks when tasks or filter changes
@@ -619,6 +619,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   filterContainer: {
+    maxHeight: 60,
     paddingBottom: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
@@ -630,15 +631,15 @@ const styles = StyleSheet.create({
   },
   filterButton: {
     minWidth: 80,
-    paddingVertical: Spacing.xs, // Reduzido de Spacing.sm para Spacing.xs
-    paddingHorizontal: Spacing.sm, // Reduzido de Spacing.md para Spacing.sm
-    borderRadius: 6, // Reduzido de 8 para 6
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: 6,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    height: 36, // Altura fixa menor
+    height: 32,
   },
   filterButtonActive: {
     backgroundColor: Colors.primary,

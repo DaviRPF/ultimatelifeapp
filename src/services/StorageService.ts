@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppData, Hero, Task, Quest, Skill, Characteristic, Group, Reward, Achievements, BackupData, WeightEntry, BodyMeasurementEntry, BodyMeasurements, Workout, NumericTaskEntry, BinaryTaskEntry } from '../types';
 import { DEFAULT_ACHIEVEMENTS } from '../constants/defaultAchievements';
+import { DEFAULT_FITNESS_ACHIEVEMENTS } from '../constants/defaultFitnessAchievements';
 
 const STORAGE_KEYS = {
   APP_DATA: '@DoItNowRPG:AppData',
@@ -27,6 +28,7 @@ const INITIAL_APP_DATA: AppData = {
   rewards: [],
   achievements: {
     default: DEFAULT_ACHIEVEMENTS.map(achievement => ({ ...achievement })),
+    fitness: DEFAULT_FITNESS_ACHIEVEMENTS.map(achievement => ({ ...achievement })),
     custom: [],
   },
   weightEntries: [],
@@ -62,6 +64,8 @@ class StorageService {
         
         // Ensure default achievements are present and up to date
         this.appData!.achievements.default = this.mergeDefaultAchievements(this.appData!.achievements.default);
+        // Ensure fitness achievements are present and up to date
+        this.appData!.achievements.fitness = this.mergeFitnessAchievements(this.appData!.achievements.fitness || []);
       } else {
         this.appData = { ...INITIAL_APP_DATA };
         await this.saveAppData();
@@ -88,7 +92,7 @@ class StorageService {
     migrated.workouts = migrated.workouts || [];
     migrated.numericTaskEntries = migrated.numericTaskEntries || [];
     migrated.binaryTaskEntries = migrated.binaryTaskEntries || [];
-    migrated.achievements = migrated.achievements || { default: [], custom: [] };
+    migrated.achievements = migrated.achievements || { default: [], fitness: [], custom: [] };
     migrated.skills = migrated.skills || {};
     migrated.characteristics = migrated.characteristics || {};
     migrated.groups = migrated.groups || [];
@@ -199,6 +203,26 @@ class StorageService {
   private mergeDefaultAchievements(existingAchievements: any[]): any[] {
     const existing = existingAchievements || [];
     const merged = [...DEFAULT_ACHIEVEMENTS];
+    
+    // Preserve unlocked status and unlock dates
+    existing.forEach(existingAchievement => {
+      const index = merged.findIndex(a => a.id === existingAchievement.id);
+      if (index !== -1) {
+        merged[index] = {
+          ...merged[index],
+          unlocked: existingAchievement.unlocked,
+          unlockedAt: existingAchievement.unlockedAt,
+        };
+      }
+    });
+    
+    return merged;
+  }
+
+  // Merge existing fitness achievements with new ones
+  private mergeFitnessAchievements(existingAchievements: any[]): any[] {
+    const existing = existingAchievements || [];
+    const merged = [...DEFAULT_FITNESS_ACHIEVEMENTS];
     
     // Preserve unlocked status and unlock dates
     existing.forEach(existingAchievement => {
@@ -435,7 +459,7 @@ class StorageService {
   }
 
   getAchievements(): Achievements {
-    return this.appData?.achievements || { default: [], custom: [] };
+    return this.appData?.achievements || { default: [], fitness: [], custom: [] };
   }
 
   // Backup and restore

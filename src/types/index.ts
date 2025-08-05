@@ -203,7 +203,8 @@ export interface Skill {
   level: number;
   xp: number;
   type: 'increasing' | 'decreasing';
-  characteristic?: string; // belongs to one characteristic
+  characteristic?: string; // primary characteristic (for backward compatibility)
+  characteristicImpacts?: { [characteristicName: string]: number }; // impact percentage (1-100) for each characteristic
 }
 
 export interface Group {
@@ -230,8 +231,11 @@ export interface Reward {
 }
 
 export interface DefaultAchievementCondition {
-  type: 'level' | 'tasks_completed' | 'gold_earned';
+  type: 'level' | 'tasks_completed' | 'gold_earned' | 'weight_lost' | 'weight_gained' | 'max_bench_press' | 'max_squat' | 'max_deadlift' | 'total_weight_lifted' | 'body_measurement' | 'workout_count' | 'cardio_minutes' | 'consecutive_workouts' | 'exercise_max_weight' | 'exercise_total_reps' | 'flexao_count' | 'barra_fixa_count';
   target: number;
+  measurementType?: keyof BodyMeasurements; // For body_measurement type
+  exerciseName?: string; // For exercise-specific achievements
+  unit?: string; // For display purposes
 }
 
 export interface DefaultAchievement {
@@ -263,6 +267,7 @@ export interface CustomAchievement {
 
 export interface Achievements {
   default: DefaultAchievement[];
+  fitness: DefaultAchievement[];
   custom: CustomAchievement[];
 }
 

@@ -15,6 +15,7 @@ import { BarChart, LineChart } from 'react-native-gifted-charts';
 import { Colors, FontSizes, Spacing } from '../../constants/theme';
 import { Task, RootStackParamList, BinaryTaskEntry, NumericTaskEntry } from '../../types';
 import StorageService from '../../services/StorageService';
+import HeatmapCalendar from '../../components/HeatmapCalendar';
 
 type TaskDetailsScreenRouteProp = RouteProp<RootStackParamList, 'TaskDetails'>;
 type TaskDetailsScreenNavigationProp = StackNavigationProp<RootStackParamList, 'TaskDetails'>;
@@ -279,6 +280,114 @@ const TaskDetailsScreen: React.FC = () => {
     return streak;
   };
 
+  // Prepare heatmap data
+  const getHeatmapData = () => {
+    const heatmapData: { date: string; value: number; status?: 'completed' | 'failed' | 'partial' | 'none'; count?: number }[] = [];
+    
+    console.log('🔍 Preparing heatmap data for task:', task?.title);
+    console.log('🔍 Binary history entries:', binaryHistory.length);
+    console.log('🔍 Numeric history entries:', numericHistory.length);
+    
+    if (task?.taskType === 'binary') {
+      // Group binary entries by date
+      const dailyEntries = new Map<string, { completed: number; failed: number }>();
+      
+      binaryHistory.forEach(entry => {
+        const date = normalizeDate(entry.date);
+        const existing = dailyEntries.get(date) || { completed: 0, failed: 0 };
+        
+        console.log('🔍 Processing binary entry:', { date, status: entry.status, originalDate: entry.date });
+        
+        if (entry.status === 'completed') {
+          existing.completed++;
+        } else if (entry.status === 'failed') {
+          existing.failed++;
+        }
+        
+        dailyEntries.set(date, existing);
+      });
+      
+      console.log('🔍 Daily entries map:', Array.from(dailyEntries.entries()));
+      
+      // Convert to heatmap format
+      dailyEntries.forEach((stats, date) => {
+        const netScore = stats.completed - stats.failed;
+        const totalCount = stats.completed + stats.failed;
+        
+        let status: 'completed' | 'failed' | 'partial' | 'none' = 'none';
+        let value = 0;
+        
+        if (stats.completed > stats.failed) {
+          status = 'completed';
+          value = stats.completed;
+        } else if (stats.failed > stats.completed) {
+          status = 'failed';
+          value = stats.failed;
+        } else if (totalCount > 0) {
+          status = 'partial';
+          value = totalCount;
+        }
+        
+        heatmapData.push({
+          date,
+          value,
+          status,
+          count: totalCount
+        });
+      });
+    } else if (task?.taskType === 'numeric') {
+      // Group numeric entries by date
+      const dailyTotals = new Map<string, number>();
+      
+      numericHistory.forEach(entry => {
+        const date = normalizeDate(entry.date);
+        const existing = dailyTotals.get(date) || 0;
+        dailyTotals.set(date, existing + entry.value);
+        
+        console.log('🔍 Processing numeric entry:', { date, value: entry.value, total: existing + entry.value });
+      });
+      
+      // Convert to heatmap format
+      const minimumTarget = task?.numericConfig?.minimumTarget || 1;
+      dailyTotals.forEach((total, date) => {
+        let status: 'completed' | 'failed' | 'partial' | 'none' = 'none';
+        let value = 0;
+        
+        if (total >= minimumTarget) {
+          status = 'completed';
+          value = Math.min(4, Math.ceil(total / minimumTarget));
+        } else if (total > 0) {
+          status = 'partial';
+          value = 1;
+        }
+        
+        heatmapData.push({
+          date,
+          value,
+          status,
+          count: total
+        });
+      });
+    }
+    
+    console.log('🔍 Final heatmap data:', heatmapData.length, 'entries');
+    return heatmapData;
+  };
+
+  const handleDayPress = (dayData: { date: string; value: number; status?: string; count?: number }) => {
+    const date = new Date(dayData.date).toLocaleDateString('pt-BR');
+    const statusText = dayData.status === 'completed' ? 'Sucesso' : 
+                     dayData.status === 'failed' ? 'Falhou' : 
+                     dayData.status === 'partial' ? 'Parcial' : 
+                     'Sem atividade';
+    
+    const message = task?.taskType === 'binary' 
+      ? `${date}\nStatus: ${statusText}\nExecuções: ${dayData.count || 0}`
+      : `${date}\nStatus: ${statusText}\nValor: ${dayData.count || 0} ${task?.numericConfig?.unit || ''}`;
+    
+    Alert.alert('Detalhes do Dia', message);
+  };
+
   const renderHeader = () => (
     <View style={styles.header}>
       <View style={styles.headerTop}>
@@ -372,7 +481,7 @@ const TaskDetailsScreen: React.FC = () => {
           xAxisLabelTextStyle={{ color: Colors.textSecondary, fontSize: 10 }}
           noOfSections={4}
           maxValue={Math.max(...streakData.map(d => d.value), 5)}
-          minValue={Math.min(...streakData.map(d => d.value), -5)}
+          stepValue={1}
           showReferenceLine1
           referenceLine1Config={{
             color: Colors.border,
@@ -491,6 +600,24 @@ const TaskDetailsScreen: React.FC = () => {
     );
   };
 
+  const renderHeatmap = () => {
+    const heatmapData = getHeatmapData();
+    
+    return (
+      <View style={styles.heatmapSection}>
+        <Text style={styles.sectionTitle}>🗓️ Últimos 90 dias</Text>
+        <HeatmapCalendar
+          data={heatmapData}
+          title={`${task?.title || 'Task'}`}
+          onDayPress={handleDayPress}
+        />
+        <Text style={styles.heatmapInfoText}>
+          Toque em um quadrado para ver detalhes do dia
+        </Text>
+      </View>
+    );
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, styles.center]}>
@@ -516,6 +643,8 @@ const TaskDetailsScreen: React.FC = () => {
         <Text style={styles.sectionTitle}>📈 Evolução</Text>
         {task.taskType === 'binary' ? renderBinaryChart() : renderNumericChart()}
       </View>
+      
+      {renderHeatmap()}
     </ScrollView>
   );
 };
@@ -613,6 +742,17 @@ const styles = StyleSheet.create({
   },
   chartSection: {
     padding: Spacing.lg,
+  },
+  heatmapSection: {
+    padding: Spacing.lg,
+    paddingTop: 0,
+  },
+  heatmapInfoText: {
+    fontSize: FontSizes.xs,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginTop: Spacing.sm,
+    fontStyle: 'italic',
   },
   chartContainer: {
     backgroundColor: Colors.surface,

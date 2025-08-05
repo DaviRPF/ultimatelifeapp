@@ -39,6 +39,25 @@ const SkillsScreen = () => {
   const [editCharInput, setEditCharInput] = useState('');
   const [newCharName, setNewCharName] = useState('');
   const [showExistingChars, setShowExistingChars] = useState(false);
+  
+  // Impact management states
+  const [characteristicImpacts, setCharacteristicImpacts] = useState<{ [key: string]: number }>({});
+  const [editCharacteristicImpacts, setEditCharacteristicImpacts] = useState<{ [key: string]: number }>({});
+  
+  // Impact questionnaire states
+  const [showImpactQuestionnaireModal, setShowImpactQuestionnaireModal] = useState(false);
+  const [currentQuestionnaireChar, setCurrentQuestionnaireChar] = useState('');
+  const [questionnaireAnswers, setQuestionnaireAnswers] = useState<number[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [isEditMode, setIsEditMode] = useState(false);
+  
+  // Backup states
+  const [showBackupModal, setShowBackupModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importText, setImportText] = useState('');
 
   const gameEngine = GameEngine.getInstance();
 
@@ -73,13 +92,33 @@ const SkillsScreen = () => {
 
   const removeCharacteristic = (charToRemove: string) => {
     setNewCharacteristics(newCharacteristics.filter(char => char !== charToRemove));
+    // Remove impact when characteristic is removed
+    setCharacteristicImpacts(prev => {
+      const updated = { ...prev };
+      delete updated[charToRemove];
+      return updated;
+    });
   };
 
   const toggleExistingCharacteristic = (charName: string) => {
     if (newCharacteristics.includes(charName)) {
       setNewCharacteristics(newCharacteristics.filter(char => char !== charName));
+      // Remove impact when characteristic is removed
+      setCharacteristicImpacts(prev => {
+        const updated = { ...prev };
+        delete updated[charName];
+        return updated;
+      });
     } else {
-      setNewCharacteristics([...newCharacteristics, charName]);
+      const updatedChars = [...newCharacteristics, charName];
+      setNewCharacteristics(updatedChars);
+      // Set equal impact for all characteristics
+      const equalImpact = Math.floor(100 / updatedChars.length);
+      const impacts: { [key: string]: number } = {};
+      updatedChars.forEach((char, index) => {
+        impacts[char] = equalImpact + (index === 0 ? 100 - (equalImpact * updatedChars.length) : 0);
+      });
+      setCharacteristicImpacts(impacts);
     }
   };
 
@@ -87,6 +126,116 @@ const SkillsScreen = () => {
     return Object.keys(appData?.characteristics || {}).filter(
       charName => !newCharacteristics.includes(charName)
     );
+  };
+
+  // Impact management functions
+  const updateCharacteristicImpact = (charName: string, impact: number) => {
+    setCharacteristicImpacts(prev => ({
+      ...prev,
+      [charName]: Math.max(1, Math.min(100, impact))
+    }));
+  };
+
+  const updateEditCharacteristicImpact = (charName: string, impact: number) => {
+    setEditCharacteristicImpacts(prev => ({
+      ...prev,
+      [charName]: Math.max(1, Math.min(100, impact))
+    }));
+  };
+
+  const getTotalImpact = (impacts: { [key: string]: number }) => {
+    return Object.values(impacts).reduce((sum, impact) => sum + impact, 0);
+  };
+
+  const normalizeImpacts = (impacts: { [key: string]: number }) => {
+    const total = getTotalImpact(impacts);
+    if (total === 0) return impacts;
+    
+    const normalized: { [key: string]: number } = {};
+    Object.entries(impacts).forEach(([char, impact]) => {
+      normalized[char] = Math.round((impact / total) * 100);
+    });
+    
+    return normalized;
+  };
+
+  // Impact questionnaire functions
+  const getQuestions = (skillName: string, charName: string) => [
+    {
+      question: `Quão diretamente "${skillName}" influencia "${charName}"?`,
+      options: [
+        { text: 'O impacto é indireto ou complementar. A skill contribui de forma mínima ou é mais um suporte.', value: 25 },
+        { text: 'O impacto é moderado. A skill é uma parte importante, mas não a única, da característica.', value: 50 },
+        { text: 'O impacto é alto. A skill é essencial e um dos pilares da característica.', value: 75 },
+        { text: 'O impacto é total. A skill define a própria característica, sendo sua manifestação principal.', value: 100 }
+      ]
+    },
+    {
+      question: `Qual é a frequência com que "${skillName}" é utilizada para melhorar "${charName}"?`,
+      options: [
+        { text: 'Uso raro ou sazonal. A skill é ativada apenas em ocasiões específicas.', value: 25 },
+        { text: 'Uso regular, mas não constante. A skill é praticada com alguma frequência.', value: 50 },
+        { text: 'Uso frequente. A skill é uma das principais tarefas na rotina de aprimoramento.', value: 75 },
+        { text: 'Uso diário ou constante. A skill é a atividade central para o desenvolvimento.', value: 100 }
+      ]
+    },
+    {
+      question: `Se "${skillName}" for removida, qual seria o impacto no progresso de "${charName}"?`,
+      options: [
+        { text: 'Pouco ou nenhum impacto. O progresso continuaria praticamente o mesmo.', value: 25 },
+        { text: 'Impacto perceptível. O progresso seria mais lento, mas ainda possível.', value: 50 },
+        { text: 'Impacto severo. A progressão ficaria seriamente comprometida.', value: 75 },
+        { text: 'Impacto crítico. A característica não poderia progredir sem a skill.', value: 100 }
+      ]
+    },
+    {
+      question: `Qual é a importância de "${skillName}" para a definição de "${charName}"?`,
+      options: [
+        { text: 'A skill é um detalhe. É uma parte menor, útil para completar o quadro.', value: 25 },
+        { text: 'A skill é uma base. É um componente fundamental que ajuda a manter estabilidade.', value: 50 },
+        { text: 'A skill é um pilar. É um dos elementos principais que sustentam a característica.', value: 75 },
+        { text: 'A skill é a essência. É a principal razão pela qual a característica existe.', value: 100 }
+      ]
+    }
+  ];
+
+  const startImpactQuestionnaire = (charName: string, editMode: boolean = false) => {
+    console.log('🔍 startImpactQuestionnaire called:', { charName, editMode, newSkillName, editSkillName });
+    setCurrentQuestionnaireChar(charName);
+    setQuestionnaireAnswers([]);
+    setCurrentQuestion(0);
+    setIsEditMode(editMode);
+    setShowImpactQuestionnaireModal(true);
+    console.log('🔍 Modal should be visible now');
+  };
+
+  const handleQuestionnaireAnswer = (value: number) => {
+    const newAnswers = [...questionnaireAnswers, value];
+    setQuestionnaireAnswers(newAnswers);
+
+    if (currentQuestion < 3) {
+      setCurrentQuestion(currentQuestion + 1);
+    } else {
+      // Calculate final impact percentage
+      const averageImpact = Math.round(newAnswers.reduce((sum, val) => sum + val, 0) / newAnswers.length);
+      
+      if (isEditMode) {
+        updateEditCharacteristicImpact(currentQuestionnaireChar, averageImpact);
+      } else {
+        updateCharacteristicImpact(currentQuestionnaireChar, averageImpact);
+      }
+      
+      // Close questionnaire
+      setShowImpactQuestionnaireModal(false);
+      setQuestionnaireAnswers([]);
+      setCurrentQuestion(0);
+    }
+  };
+
+  const closeImpactQuestionnaire = () => {
+    setShowImpactQuestionnaireModal(false);
+    setQuestionnaireAnswers([]);
+    setCurrentQuestion(0);
   };
 
   const handleCreateSkill = async () => {
@@ -106,11 +255,12 @@ const SkillsScreen = () => {
     }
 
     try {
-      await gameEngine.createSkill(newSkillName.trim(), newSkillType, newCharacteristics);
+      await gameEngine.createSkill(newSkillName.trim(), newSkillType, newCharacteristics, characteristicImpacts);
       setShowAddModal(false);
       setNewSkillName('');
       setNewCharacteristics([]);
       setCharacteristicInput('');
+      setCharacteristicImpacts({});
       await loadData();
       Alert.alert('Success', 'Skill created successfully!');
     } catch (error) {
@@ -125,6 +275,7 @@ const SkillsScreen = () => {
     setCharacteristicInput('');
     setNewSkillType('increasing');
     setShowExistingChars(false);
+    setCharacteristicImpacts({});
     setShowAddModal(false);
   };
 
@@ -135,7 +286,8 @@ const SkillsScreen = () => {
       setEditingSkillName(skillName);
       setEditSkillName(skillName);
       setEditSkillType(skill.type);
-      setEditCharacteristics([...skill.characteristics]);
+      setEditCharacteristics(skill.characteristic ? [skill.characteristic] : []);
+      setEditCharacteristicImpacts(skill.characteristicImpacts || {});
       setShowEditSkillModal(true);
     }
   };
@@ -183,9 +335,9 @@ const SkillsScreen = () => {
           return;
         }
         await gameEngine.deleteSkill(editingSkillName);
-        await gameEngine.createSkill(editSkillName.trim(), editSkillType, editCharacteristics);
+        await gameEngine.createSkill(editSkillName.trim(), editSkillType, editCharacteristics, editCharacteristicImpacts);
       } else {
-        await gameEngine.updateSkill(editingSkillName, editSkillType, editCharacteristics);
+        await gameEngine.updateSkillComplete(editingSkillName, editSkillType, editCharacteristics, editCharacteristicImpacts);
       }
       
       resetEditSkillModal();
@@ -203,6 +355,7 @@ const SkillsScreen = () => {
     setEditCharacteristics([]);
     setEditCharInput('');
     setEditSkillType('increasing');
+    setEditCharacteristicImpacts({});
     setShowEditSkillModal(false);
   };
 
@@ -215,6 +368,12 @@ const SkillsScreen = () => {
 
   const removeEditCharacteristic = (charToRemove: string) => {
     setEditCharacteristics(editCharacteristics.filter(char => char !== charToRemove));
+    // Remove impact when characteristic is removed
+    setEditCharacteristicImpacts(prev => {
+      const updated = { ...prev };
+      delete updated[charToRemove];
+      return updated;
+    });
   };
 
   // Characteristic functions
@@ -308,6 +467,130 @@ const SkillsScreen = () => {
   const resetAddCharModal = () => {
     setNewCharName('');
     setShowAddCharModal(false);
+  };
+
+  // Backup functions
+  const handleExportData = async () => {
+    try {
+      const skills = appData?.skills || {};
+      const characteristics = appData?.characteristics || {};
+      
+      const exportData = {
+        skills,
+        characteristics,
+        exportDate: new Date().toISOString(),
+        version: '1.0'
+      };
+      
+      const jsonString = JSON.stringify(exportData, null, 2);
+      
+      // Copy to clipboard for mobile
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(jsonString);
+        Alert.alert(
+          'Backup Exportado!', 
+          'O backup foi copiado para a área de transferência. Cole em um arquivo de texto para salvar.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        // Fallback - show the JSON in an alert for manual copy
+        Alert.alert(
+          'Backup Gerado', 
+          'Copie o texto abaixo e salve em um arquivo:\n\n' + jsonString.substring(0, 200) + '...',
+          [{ text: 'OK' }]
+        );
+      }
+      
+      setShowBackupModal(false);
+    } catch (error) {
+      console.error('Error exporting data:', error);
+      Alert.alert('Erro', 'Falha ao exportar backup');
+    }
+  };
+
+  const handleImportData = async () => {
+    if (!importText.trim()) {
+      Alert.alert('Erro', 'Por favor, cole o conteúdo do backup');
+      return;
+    }
+
+    try {
+      const importData = JSON.parse(importText);
+      
+      if (!importData.skills || !importData.characteristics) {
+        Alert.alert('Erro', 'Formato de backup inválido');
+        return;
+      }
+
+      // Import skills
+      for (const [skillName, skill] of Object.entries(importData.skills)) {
+        await gameEngine.storageService.updateSkill(skillName, skill as any);
+      }
+
+      // Import characteristics
+      for (const [charName, characteristic] of Object.entries(importData.characteristics)) {
+        await gameEngine.storageService.updateCharacteristic(charName, characteristic as any);
+      }
+
+      setImportText('');
+      setShowImportModal(false);
+      await loadData();
+      Alert.alert('Sucesso', 'Backup importado com sucesso!');
+    } catch (error) {
+      console.error('Error importing data:', error);
+      Alert.alert('Erro', 'Falha ao importar backup. Verifique o formato do arquivo.');
+    }
+  };
+
+  const handleDeleteAll = () => {
+    setShowBackupModal(false);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteAll = () => {
+    setShowDeleteModal(false);
+    setShowDeleteConfirmModal(true);
+    setDeleteConfirmText('');
+  };
+
+  const executeDeleteAll = async () => {
+    const requiredText = "Eu confirmo que quero apagar permanentemente todas as minhas skills e características";
+    
+    if (deleteConfirmText.trim() !== requiredText) {
+      Alert.alert('Erro', 'Texto de confirmação incorreto. Digite exatamente a frase solicitada.');
+      return;
+    }
+
+    try {
+      // Delete all skills
+      const skills = appData?.skills || {};
+      for (const skillName of Object.keys(skills)) {
+        await gameEngine.deleteSkill(skillName);
+      }
+
+      // Delete all characteristics
+      const characteristics = appData?.characteristics || {};
+      for (const charName of Object.keys(characteristics)) {
+        await gameEngine.deleteCharacteristic(charName);
+      }
+
+      setShowDeleteConfirmModal(false);
+      setDeleteConfirmText('');
+      await loadData();
+      Alert.alert('Sucesso', 'Todas as skills e características foram apagadas.');
+    } catch (error) {
+      console.error('Error deleting all data:', error);
+      Alert.alert('Erro', 'Falha ao apagar dados');
+    }
+  };
+
+  const resetBackupModals = () => {
+    setShowBackupModal(false);
+    setShowDeleteModal(false);
+    setShowDeleteConfirmModal(false);
+    setShowImportModal(false);
+    setDeleteConfirmText('');
+    setImportText('');
   };
 
   const renderSkills = () => {
@@ -416,6 +699,12 @@ const SkillsScreen = () => {
         <Text style={styles.title}>Skills & Stats</Text>
         <View style={styles.headerButtons}>
           <TouchableOpacity 
+            style={styles.backupButton}
+            onPress={() => setShowBackupModal(true)}
+          >
+            <Ionicons name="cloud-upload-outline" size={20} color={Colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity 
             style={styles.addButton}
             onPress={() => setShowAddModal(true)}
           >
@@ -461,6 +750,86 @@ const SkillsScreen = () => {
       >
         {activeTab === 'skills' ? renderSkills() : renderCharacteristics()}
       </ScrollView>
+
+      {/* Impact Questionnaire Modal */}
+      <Modal
+        visible={showImpactQuestionnaireModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={closeImpactQuestionnaire}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.questionnaireModalContent}>
+            <ScrollView 
+              style={styles.questionnaireScrollContainer}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.questionnaireScrollContent}
+            >
+              <View style={styles.questionnaireHeader}>
+                <Text style={styles.questionnaireTitle}>
+                  Configurar Impacto
+                </Text>
+                <Text style={styles.questionnaireProgress}>
+                  Pergunta {currentQuestion + 1} de 4
+                </Text>
+              </View>
+
+              <View style={styles.questionnaireBody}>
+                <View style={styles.questionContainer}>
+                  <Text style={styles.questionText}>
+                    {(() => {
+                      const skillName = isEditMode ? editSkillName || 'Nova Skill' : newSkillName || 'Nova Skill';
+                      const questions = currentQuestionnaireChar ? getQuestions(skillName, currentQuestionnaireChar) : [];
+                      const question = questions[currentQuestion]?.question || 'Carregando pergunta...';
+                      console.log('🔍 Question data:', { skillName, currentQuestionnaireChar, currentQuestion, question, questions });
+                      return question;
+                    })()}
+                  </Text>
+                </View>
+
+                <View style={styles.optionsContainer}>
+                  {(() => {
+                    const skillName = isEditMode ? editSkillName || 'Nova Skill' : newSkillName || 'Nova Skill';
+                    const questions = currentQuestionnaireChar ? getQuestions(skillName, currentQuestionnaireChar) : [];
+                    const options = questions[currentQuestion]?.options || [];
+                    
+                    console.log('🔍 Options data:', { options, optionsLength: options.length });
+                    
+                    return options.map((option, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={styles.optionButton}
+                        onPress={() => {
+                          console.log('🔍 Option selected:', option);
+                          handleQuestionnaireAnswer(option.value);
+                        }}
+                      >
+                        <View style={styles.optionHeader}>
+                          <Text style={styles.optionLetter}>
+                            {String.fromCharCode(65 + index)}. ({option.value}%)
+                          </Text>
+                        </View>
+                        <Text style={styles.optionText}>
+                          {option.text}
+                        </Text>
+                      </TouchableOpacity>
+                    ));
+                  })()}
+                </View>
+              </View>
+
+              <View style={styles.questionnaireFooter}>
+                <TouchableOpacity
+                  style={styles.questionnaireCancelButton}
+                  onPress={closeImpactQuestionnaire}
+                >
+                  <Text style={styles.questionnaireCancelText}>Cancelar</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Add Skill Modal */}
       <Modal
@@ -564,17 +933,47 @@ const SkillsScreen = () => {
                 </View>
               )}
 
-              {newCharacteristics.map((char, index) => (
-                <View key={index} style={styles.characteristicItem}>
-                  <Text style={styles.characteristicText}>{char}</Text>
-                  <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={() => removeCharacteristic(char)}
-                  >
-                    <Text style={styles.removeButtonText}>×</Text>
-                  </TouchableOpacity>
+              {newCharacteristics.map((char, index) => {
+                console.log('🔍 Rendering characteristic:', char, 'Impact:', characteristicImpacts[char]);
+                return (
+                  <View key={index} style={styles.characteristicItem}>
+                    <Text style={styles.characteristicText}>{char}</Text>
+                    <View style={styles.impactControls}>
+                      <Text style={styles.impactText}>
+                        {characteristicImpacts[char] || 0}%
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.questionnaireButton}
+                        onPress={() => {
+                          console.log('🔍 Starting questionnaire for:', char);
+                          startImpactQuestionnaire(char, false);
+                        }}
+                      >
+                        <Text style={styles.questionnaireButtonText}>📋</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.removeButton}
+                      onPress={() => removeCharacteristic(char)}
+                    >
+                      <Text style={styles.removeButtonText}>×</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+              
+              {newCharacteristics.length > 0 && (
+                <View style={styles.impactSummary}>
+                  <Text style={styles.impactSummaryText}>
+                    Total de Impacto: {getTotalImpact(characteristicImpacts)}%
+                  </Text>
+                  {getTotalImpact(characteristicImpacts) !== 100 && (
+                    <Text style={styles.impactWarning}>
+                      ⚠️ Recomendado: 100% total
+                    </Text>
+                  )}
                 </View>
-              ))}
+              )}
             </View>
 
             <View style={styles.modalButtons}>
@@ -652,6 +1051,20 @@ const SkillsScreen = () => {
               {editCharacteristics.map((char, index) => (
                 <View key={index} style={styles.characteristicItem}>
                   <Text style={styles.characteristicText}>{char}</Text>
+                  <View style={styles.impactControls}>
+                    <Text style={styles.impactText}>
+                      {editCharacteristicImpacts[char] || 0}%
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.questionnaireButton}
+                      onPress={() => {
+                        console.log('🔍 Starting questionnaire for edit:', char);
+                        startImpactQuestionnaire(char, true);
+                      }}
+                    >
+                      <Text style={styles.questionnaireButtonText}>📋</Text>
+                    </TouchableOpacity>
+                  </View>
                   <TouchableOpacity
                     style={styles.removeButton}
                     onPress={() => removeEditCharacteristic(char)}
@@ -660,6 +1073,19 @@ const SkillsScreen = () => {
                   </TouchableOpacity>
                 </View>
               ))}
+              
+              {editCharacteristics.length > 0 && (
+                <View style={styles.impactSummary}>
+                  <Text style={styles.impactSummaryText}>
+                    Total de Impacto: {getTotalImpact(editCharacteristicImpacts)}%
+                  </Text>
+                  {getTotalImpact(editCharacteristicImpacts) !== 100 && (
+                    <Text style={styles.impactWarning}>
+                      ⚠️ Recomendado: 100% total
+                    </Text>
+                  )}
+                </View>
+              )}
             </View>
 
             <View style={styles.modalButtons}>
@@ -730,6 +1156,164 @@ const SkillsScreen = () => {
               </TouchableOpacity>
               <TouchableOpacity style={styles.createButton} onPress={handleCreateStandaloneCharacteristic}>
                 <Text style={styles.createButtonText}>Create</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Backup Main Modal */}
+      <Modal
+        visible={showBackupModal}
+        transparent
+        animationType="slide"
+        onRequestClose={resetBackupModals}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Backup & Restore</Text>
+            
+            <TouchableOpacity style={styles.backupOptionButton} onPress={handleExportData}>
+              <Ionicons name="download-outline" size={24} color={Colors.primary} />
+              <View style={styles.backupOptionContent}>
+                <Text style={styles.backupOptionTitle}>Exportar</Text>
+                <Text style={styles.backupOptionDescription}>Salvar suas skills e características</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.backupOptionButton} onPress={() => setShowImportModal(true)}>
+              <Ionicons name="cloud-upload-outline" size={24} color={Colors.secondary} />
+              <View style={styles.backupOptionContent}>
+                <Text style={styles.backupOptionTitle}>Importar</Text>
+                <Text style={styles.backupOptionDescription}>Restaurar de um backup</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.backupOptionButton, styles.dangerOption]} onPress={handleDeleteAll}>
+              <Ionicons name="trash-outline" size={24} color={Colors.danger} />
+              <View style={styles.backupOptionContent}>
+                <Text style={[styles.backupOptionTitle, styles.dangerText]}>Apagar Tudo</Text>
+                <Text style={[styles.backupOptionDescription, styles.dangerText]}>Remove todas as skills e características</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.cancelButton} onPress={resetBackupModals}>
+              <Text style={styles.cancelButtonText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Import Modal */}
+      <Modal
+        visible={showImportModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowImportModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Importar Backup</Text>
+            
+            <Text style={styles.importInstructions}>
+              Cole o conteúdo do arquivo de backup abaixo:
+            </Text>
+            
+            <TextInput
+              style={styles.importTextArea}
+              placeholder="Cole o JSON do backup aqui..."
+              placeholderTextColor={Colors.textSecondary}
+              value={importText}
+              onChangeText={setImportText}
+              multiline
+              numberOfLines={10}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.cancelButton} onPress={() => setShowImportModal(false)}>
+                <Text style={styles.cancelButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.createButton} onPress={handleImportData}>
+                <Text style={styles.createButtonText}>Importar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Confirmation Modal 1 */}
+      <Modal
+        visible={showDeleteModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowDeleteModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>⚠️ Confirmação</Text>
+            
+            <Text style={styles.warningText}>
+              Você está prestes a apagar TODAS as suas skills e características.
+              {'\n\n'}
+              Esta ação é PERMANENTE e não pode ser desfeita.
+              {'\n\n'}
+              Tem certeza absoluta que deseja continuar?
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.cancelButton} onPress={() => setShowDeleteModal(false)}>
+                <Text style={styles.cancelButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.createButton, styles.dangerButton]} onPress={confirmDeleteAll}>
+                <Text style={styles.createButtonText}>Sim, continuar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Confirmation Modal 2 - Final */}
+      <Modal
+        visible={showDeleteConfirmModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowDeleteConfirmModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>🚨 CONFIRMAÇÃO FINAL</Text>
+            
+            <Text style={styles.warningText}>
+              ÚLTIMA CHANCE! Esta ação irá apagar permanentemente:
+              {'\n\n'}
+              • Todas as suas skills
+              {'\n'}
+              • Todas as suas características  
+              {'\n'}
+              • Todo o progresso associado
+              {'\n\n'}
+              Para confirmar, digite EXATAMENTE a frase abaixo:
+            </Text>
+
+            <Text style={styles.confirmationPhrase}>
+              "Eu confirmo que quero apagar permanentemente todas as minhas skills e características"
+            </Text>
+            
+            <TextInput
+              style={styles.confirmationInput}
+              placeholder="Digite a frase de confirmação aqui..."
+              placeholderTextColor={Colors.textSecondary}
+              value={deleteConfirmText}
+              onChangeText={setDeleteConfirmText}
+              multiline
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.cancelButton} onPress={() => setShowDeleteConfirmModal(false)}>
+                <Text style={styles.cancelButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.createButton, styles.dangerButton]} onPress={executeDeleteAll}>
+                <Text style={styles.createButtonText}>APAGAR TUDO</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -979,12 +1563,12 @@ const styles = StyleSheet.create({
   },
   characteristicItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: Colors.background,
     borderRadius: 8,
     padding: Spacing.sm,
     marginBottom: Spacing.xs,
+    gap: Spacing.sm,
   },
   characteristicText: {
     fontSize: FontSizes.md,
@@ -1036,30 +1620,39 @@ const styles = StyleSheet.create({
   },
   // New styles for edit functionality
   skillContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     marginBottom: Spacing.sm,
+    position: 'relative',
   },
   skillActions: {
+    position: 'absolute',
+    bottom: Spacing.xs,
+    right: Spacing.xs,
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: Spacing.sm,
+    zIndex: 1,
   },
   editButton: {
-    backgroundColor: Colors.surface,
-    borderRadius: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 16,
     padding: Spacing.xs,
     marginRight: Spacing.xs,
     borderWidth: 1,
     borderColor: Colors.primary,
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   deleteButton: {
-    backgroundColor: Colors.surface,
-    borderRadius: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 16,
     padding: Spacing.xs,
     borderWidth: 1,
     borderColor: Colors.error,
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   characteristicHeaderRight: {
     flexDirection: 'row',
@@ -1150,6 +1743,252 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
     paddingVertical: Spacing.md,
+  },
+  // Impact control styles
+  impactControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.surface,
+    borderRadius: 6,
+    padding: 4,
+  },
+  impactText: {
+    fontSize: FontSizes.sm,
+    color: Colors.primary,
+    fontWeight: 'bold',
+    minWidth: 35,
+    textAlign: 'center',
+  },
+  questionnaireButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: 4,
+    padding: 6,
+    minWidth: 28,
+    minHeight: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  questionnaireButtonText: {
+    fontSize: 14,
+    color: Colors.background,
+  },
+  impactSummary: {
+    backgroundColor: Colors.background,
+    padding: Spacing.sm,
+    borderRadius: 8,
+    marginTop: Spacing.sm,
+    alignItems: 'center',
+  },
+  impactSummaryText: {
+    fontSize: FontSizes.sm,
+    color: Colors.text,
+    fontWeight: 'bold',
+  },
+  impactWarning: {
+    fontSize: FontSizes.xs,
+    color: Colors.warning,
+    marginTop: Spacing.xs,
+    textAlign: 'center',
+  },
+  // Questionnaire modal styles
+  questionnaireModalContent: {
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    width: '95%',
+    height: '90%',
+  },
+  questionnaireScrollContainer: {
+    flex: 1,
+  },
+  questionnaireScrollContent: {
+    padding: Spacing.md,
+    flexGrow: 1,
+  },
+  questionnaireHeader: {
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    flexShrink: 0,
+  },
+  questionnaireTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: Spacing.xs,
+  },
+  questionnaireProgress: {
+    fontSize: FontSizes.sm,
+    color: Colors.textSecondary,
+  },
+  questionnaireBody: {
+    flex: 1,
+    minHeight: 400,
+  },
+  questionContainer: {
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+    minHeight: 80,
+  },
+  questionText: {
+    fontSize: FontSizes.md,
+    color: Colors.text,
+    fontWeight: '600',
+    textAlign: 'left',
+    lineHeight: 22,
+    width: '100%',
+  },
+  optionsContainer: {
+    paddingVertical: Spacing.sm,
+  },
+  optionButton: {
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    minHeight: 55,
+    justifyContent: 'flex-start',
+    alignItems: 'stretch',
+    marginBottom: Spacing.xs,
+  },
+  optionHeader: {
+    marginBottom: Spacing.xs,
+  },
+  optionLetter: {
+    fontSize: FontSizes.sm,
+    color: Colors.primary,
+    fontWeight: 'bold',
+  },
+  optionText: {
+    fontSize: FontSizes.xs,
+    color: Colors.text,
+    lineHeight: 18,
+    textAlign: 'left',
+    flexWrap: 'wrap',
+    flex: 1,
+    flexShrink: 1,
+  },
+  questionnaireFooter: {
+    marginTop: Spacing.sm,
+    alignItems: 'center',
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    flexShrink: 0,
+  },
+  questionnaireCancelButton: {
+    backgroundColor: Colors.surfaceDark,
+    borderRadius: 8,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  questionnaireCancelText: {
+    fontSize: FontSizes.md,
+    color: Colors.text,
+    fontWeight: '600',
+  },
+  // Backup styles
+  backupButton: {
+    backgroundColor: Colors.secondary,
+    borderRadius: 8,
+    padding: Spacing.sm,
+    marginRight: Spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 40,
+    height: 40,
+  },
+  backupOptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.background,
+    borderRadius: 12,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  backupOptionContent: {
+    marginLeft: Spacing.md,
+    flex: 1,
+  },
+  backupOptionTitle: {
+    fontSize: FontSizes.md,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: Spacing.xs,
+  },
+  backupOptionDescription: {
+    fontSize: FontSizes.sm,
+    color: Colors.textSecondary,
+  },
+  dangerOption: {
+    borderColor: Colors.danger,
+    backgroundColor: Colors.danger + '10',
+  },
+  dangerText: {
+    color: Colors.danger,
+  },
+  dangerButton: {
+    backgroundColor: Colors.danger,
+  },
+  importInstructions: {
+    fontSize: FontSizes.sm,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.md,
+    textAlign: 'center',
+  },
+  importTextArea: {
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    padding: Spacing.md,
+    fontSize: FontSizes.sm,
+    color: Colors.text,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: Spacing.lg,
+    minHeight: 120,
+    textAlignVertical: 'top',
+  },
+  warningText: {
+    fontSize: FontSizes.md,
+    color: Colors.text,
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+    lineHeight: 24,
+  },
+  confirmationPhrase: {
+    fontSize: FontSizes.sm,
+    color: Colors.primary,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: Spacing.md,
+    padding: Spacing.sm,
+    backgroundColor: Colors.primary + '20',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  confirmationInput: {
+    backgroundColor: Colors.background,
+    borderRadius: 8,
+    padding: Spacing.md,
+    fontSize: FontSizes.sm,
+    color: Colors.text,
+    borderWidth: 2,
+    borderColor: Colors.danger,
+    marginBottom: Spacing.lg,
+    minHeight: 80,
+    textAlignVertical: 'top',
   },
 });
 

@@ -50,7 +50,7 @@ const BodyMeasurementsScreen = () => {
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [loadData])
+    }, [])
   );
 
   const resetForm = () => {
